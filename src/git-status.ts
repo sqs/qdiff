@@ -126,6 +126,7 @@ class GitStatusState extends State<GitStatusWidget> {
         let selectedId: string | undefined;
         let selectedHunkId: string | undefined;
         let selectedFileId: string | undefined;
+        let previousHunkIndex: number | undefined;
         
         if (this.selectedIndex >= 0 && this.selectedIndex < this.items.length) {
             const item = this.items[this.selectedIndex];
@@ -133,6 +134,7 @@ class GitStatusState extends State<GitStatusWidget> {
             if (item.entry) selectedFileId = item.entry.key;
             if (item.entry && item.hunkIndex !== undefined) {
                 selectedHunkId = `${item.entry.key}-hunk-${item.hunkIndex}`;
+                previousHunkIndex = item.hunkIndex;
             }
         }
 
@@ -199,7 +201,40 @@ class GitStatusState extends State<GitStatusWidget> {
                     );
                 }
                 
-                // 3. If not found, try finding the file
+                // 3. If not found, try finding the closest hunk in the same file
+                if (newIndex === -1 && selectedFileId && previousHunkIndex !== undefined) {
+                    // Find all hunks for this file
+                    const fileHunks = this.items
+                        .map((item, index) => ({ item, index }))
+                        .filter(({ item }) => 
+                            item.entry?.key === selectedFileId && 
+                            item.type === 'hunk' && 
+                            item.hunkIndex !== undefined
+                        );
+                    
+                    if (fileHunks.length > 0) {
+                        // Find the hunk with the largest index <= previousHunkIndex
+                        // (or just the last one if all have smaller indices)
+                        let bestMatch = fileHunks[0];
+                        for (const h of fileHunks) {
+                             if (h.item.hunkIndex! <= previousHunkIndex) {
+                                 bestMatch = h;
+                             } else {
+                                 break; // Hunks are sorted, so we can stop
+                             }
+                        }
+                        // If we couldn't find one <= previous, we might be at the start (shouldn't happen if sorted properly and we pick 0)
+                        // Actually, if we staged the FIRST hunk (0), and now we have 0 (was 1).
+                        // previous=0. match 0.
+                        
+                        // If we staged the LAST hunk (2). Max is now 1.
+                        // previous=2. match 1.
+                        
+                        newIndex = bestMatch.index;
+                    }
+                }
+
+                // 4. If not found, try finding the file
                 if (newIndex === -1 && selectedFileId) {
                     newIndex = this.items.findIndex(item => item.entry?.key === selectedFileId);
                 }
@@ -213,6 +248,34 @@ class GitStatusState extends State<GitStatusWidget> {
                  // Fallback to clamping if we completely lost context
                  if (this.selectedIndex >= this.items.length) {
                     this.selectedIndex = Math.max(0, this.items.length - 1);
+                 }
+
+                 // If the item at the current index is not selectable (e.g. we landed on a header),
+                 // try to find a selectable item nearby.
+                 if (this.items.length > 0 && !this.items[this.selectedIndex].selectable) {
+                     let foundIndex = -1;
+                     
+                     // Try searching backwards first (likely we are at the end or a section shrank)
+                     for (let i = this.selectedIndex - 1; i >= 0; i--) {
+                         if (this.items[i].selectable) {
+                             foundIndex = i;
+                             break;
+                         }
+                     }
+                     
+                     // If not found backwards, try forwards
+                     if (foundIndex === -1) {
+                         for (let i = this.selectedIndex + 1; i < this.items.length; i++) {
+                             if (this.items[i].selectable) {
+                                 foundIndex = i;
+                                 break;
+                             }
+                         }
+                     }
+                     
+                     if (foundIndex !== -1) {
+                         this.selectedIndex = foundIndex;
+                     }
                  }
             }
             
