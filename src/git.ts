@@ -51,10 +51,35 @@ export async function getDiff(path: string, staged: boolean): Promise<string> {
     args.push(path);
     try {
         const { stdout } = await execa('git', args);
-        return processDiff(stdout);
-    } catch (e) {
-        return "Error getting diff (maybe untracked file?)";
+    return processDiff(stdout);
+} catch (e) {
+    return "Error getting diff (maybe untracked file?)";
+}
+}
+
+export async function getRawDiff(path: string, staged: boolean): Promise<string> {
+const args = ['diff', '--no-color']; // Ensure no color codes for parsing
+if (staged) {
+    args.push('--cached');
+}
+args.push(path);
+try {
+    const { stdout } = await execa('git', args);
+    return stdout;
+} catch (e) {
+    console.error('Error getting raw diff:', e);
+    return "";
+}
+}
+
+export async function applyPatch(patch: string, reverse: boolean = false) {
+    const args = ['apply', '--cached'];
+    if (reverse) {
+        args.push('--reverse');
     }
+    // Use input from stdin
+    const child = execa('git', args, { input: patch });
+    await child;
 }
 
 export async function getBranchName(): Promise<string> {
