@@ -57,6 +57,31 @@ export async function getDiff(path: string, staged: boolean): Promise<string> {
     }
 }
 
+export async function getBranchName(): Promise<string> {
+    try {
+        const { stdout } = await execa('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
+        return stdout.trim();
+    } catch (e) {
+        return 'HEAD';
+    }
+}
+
+export interface CommitInfo {
+    sha: string;
+    message: string;
+    committer: string;
+}
+
+export async function getLastCommit(): Promise<CommitInfo | null> {
+    try {
+        const { stdout } = await execa('git', ['log', '-1', '--format=%h%n%s%n%cn']);
+        const [sha, message, committer] = stdout.split('\n');
+        return { sha, message, committer };
+    } catch (e) {
+        return null;
+    }
+}
+
 function processDiff(diff: string): string {
     const lines = diff.split('\n');
     // Filter out header lines

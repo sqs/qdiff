@@ -24,6 +24,7 @@ import {
     BuildContextImpl,
     RenderBox,
     MouseRegion,
+    Expanded,
 } from './tui/framework/index.js';
 import { ensureVisible } from './tui/framework/scrolling/ensure-visible.js';
 import type { KeyboardEvent } from './tui/lib/parser/types.js';
@@ -39,6 +40,8 @@ class GitStatusWidget extends StatefulWidget {
 class GitStatusState extends State<GitStatusWidget> {
     private staged: git.FileEntry[] = [];
     private unstaged: git.FileEntry[] = [];
+    private branchName: string = '';
+    private lastCommit: git.CommitInfo | null = null;
     private selectedIndex = 0;
     private expandedFiles = new Set<string>(); 
     private diffCache = new Map<string, string>();
@@ -57,13 +60,48 @@ class GitStatusState extends State<GitStatusWidget> {
         this.setState(() => {});
         
         try {
-            const status = await git.getStatus();
+            const [status, branchName, lastCommit] = await Promise.all([
+                git.getStatus(),
+                git.getBranchName(),
+                git.getLastCommit()
+            ]);
             this.staged = status.staged;
             this.unstaged = status.unstaged;
+            this.branchName = branchName;
+            this.lastCommit = lastCommit;
             
             const total = this.staged.length + this.unstaged.length;
             if (this.selectedIndex >= total && total > 0) {
                 this.selectedIndex = Math.max(0, total - 1);
+            }
+
+            // Refresh diffs for expanded files
+            const allEntries = [...this.staged, ...this.unstaged];
+            const validKeys = new Set(allEntries.map(e => e.key));
+            
+            // Clean up expandedFiles
+            for (const key of this.expandedFiles) {
+                if (!validKeys.has(key)) {
+                    this.expandedFiles.delete(key);
+                    this.diffCache.delete(key);
+                }
+            }
+
+            const promises = allEntries
+                .filter(entry => this.expandedFiles.has(entry.key))
+                .map(async entry => {
+                    try {
+                        const diff = await git.getDiff(entry.path, entry.staged);
+                        return { key: entry.key, diff };
+                    } catch (e) {
+                        return { key: entry.key, diff: 'Error refreshing diff' };
+                    }
+                });
+            
+            const results = await Promise.all(promises);
+            
+            for (const { key, diff } of results) {
+                this.diffCache.set(key, diff);
             }
         } catch (e) {
             console.error(e);
@@ -104,6 +142,10 @@ class GitStatusState extends State<GitStatusWidget> {
         }
         if (event.key === 'Tab') {
             this.toggleExpand();
+            return KeyEventResult.handled;
+        }
+        if (event.key === 'g') {
+            this.refresh();
             return KeyEventResult.handled;
         }
         if (event.key === 'q') {
@@ -159,6 +201,18 @@ class GitStatusState extends State<GitStatusWidget> {
         }
     }
 
+    formatLastCommit(): string {
+        if (!this.lastCommit) return '';
+        const { sha, message, committer } = this.lastCommit;
+        const shortSha = sha.substring(0, 6);
+        const fullStr = `${shortSha} ${message} ${committer}`;
+        
+        if (fullStr.length > 80) {
+            return fullStr.substring(0, 77) + '...';
+        }
+        return fullStr;
+    }
+
     scrollToSelected() {
         WidgetsBinding.instance.frameScheduler.addPostFrameCallback(() => {
             const element = this.selectedItemKey.currentElement;
@@ -209,7 +263,7 @@ class GitStatusState extends State<GitStatusWidget> {
              }));
         }
 
-        return new Focus({
+        const mainContent = new Focus({
             focusNode: this.focusNode,
             autofocus: true,
             onKey: (event) => this.handleKey(event),
@@ -240,6 +294,27 @@ class GitStatusState extends State<GitStatusWidget> {
                     })
                 })
             })
+        });
+
+        const statusText = ` ${this.branchName} | Unstaged: ${this.unstaged.length}, Staged: ${this.staged.length} | Last: ${this.formatLastCommit()}`;
+
+        const statusBar = new Container({
+            height: 1,
+            decoration: new BoxDecoration(Colors.blue),
+            child: new RichText({
+                text: new TextSpan(
+                    statusText,
+                    new TextStyle({ color: Colors.white })
+                )
+            })
+        });
+
+        return new Column({
+            children: [
+                new Expanded({ child: mainContent }),
+                statusBar
+            ],
+            crossAxisAlignment: CrossAxisAlignment.stretch
         });
     }
 
