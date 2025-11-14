@@ -41,7 +41,7 @@ export async function unstageFile(path: string) {
 }
 
 export async function getDiff(path: string, staged: boolean): Promise<string> {
-    const args = ['diff', '--word-diff=plain'];
+    const args = ['diff'];
     if (staged) {
         args.push('--cached');
     }
@@ -69,69 +69,17 @@ function processDiff(diff: string): string {
 
     return bodyLines.map(line => {
         if (line.startsWith('@@')) {
-            return chalk.cyan(line); 
+            const newLine = line.replace(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/, '@@ -$1 +$2 @@');
+            return chalk.cyan(newLine); 
         }
-        
-        const hasDiff = line.includes('[-') || line.includes('{+');
-        if (!hasDiff) {
-             return line; 
+        if (line.startsWith('+')) {
+            // Use ANSI 256 color for darker green background (22 is dark green)
+            return chalk.bgAnsi256(22)(line);
         }
-        
-        let parts: { type: 'text' | 'del' | 'add', content: string }[] = [];
-        let lastIndex = 0;
-        const re = /(?:\[-(.*?)-\])|(?:{\+(.*?)\+})/g;
-        let match;
-        
-        let hasText = false;
-        let hasDel = false;
-        let hasAdd = false;
-
-        // Helper to check if string is more than just whitespace
-        const isContent = (s: string) => s.trim().length > 0;
-
-        while ((match = re.exec(line)) !== null) {
-             if (match.index > lastIndex) {
-                 const text = line.substring(lastIndex, match.index);
-                 parts.push({ type: 'text', content: text });
-                 if (isContent(text)) hasText = true;
-             }
-             
-             if (match[1] !== undefined) { // Deletion
-                 parts.push({ type: 'del', content: match[1] });
-                 hasDel = true;
-             } else if (match[2] !== undefined) { // Addition
-                 parts.push({ type: 'add', content: match[2] });
-                 hasAdd = true;
-             }
-             
-             lastIndex = re.lastIndex;
+        if (line.startsWith('-')) {
+            // Use ANSI 256 color for darker red background (52 is dark red)
+            return chalk.bgAnsi256(52)(line);
         }
-        
-        if (lastIndex < line.length) {
-            const text = line.substring(lastIndex);
-            parts.push({ type: 'text', content: text });
-             if (isContent(text)) hasText = true;
-        }
-        
-        // Determine default color (for 'text' parts)
-        // Pure addition: hasAdd && !hasDel && !hasText -> Green
-        // Pure deletion: hasDel && !hasAdd && !hasText -> Red
-        // Changed: Else -> Yellow
-        
-        let defaultColor;
-        if (hasAdd && !hasDel && !hasText) {
-            defaultColor = chalk.green;
-        } else if (hasDel && !hasAdd && !hasText) {
-            defaultColor = chalk.red;
-        } else {
-            defaultColor = chalk.yellow;
-        }
-                             
-        return parts.map(part => {
-            if (part.type === 'del') return chalk.red(part.content);
-            if (part.type === 'add') return chalk.green(part.content);
-            return defaultColor(part.content);
-        }).join('');
-        
+        return chalk.dim(line);
     }).join('\n');
 }

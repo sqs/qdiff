@@ -345,6 +345,7 @@ export class ViewportRenderObject extends RenderBox {
 
 			// Update scroll controller with new extent
 			this._scrollController.updateMaxScrollExtent(newScrollExtent)
+			this._scrollController.updateViewportDimension(constraints.maxHeight)
 
 			// Handle follow mode and repositioning before layout
 			if (this._scrollController.followMode && wasAtBottom) {

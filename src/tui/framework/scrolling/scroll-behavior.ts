@@ -64,16 +64,20 @@ export class ScrollBehavior {
 				// Vim page scrolling
 				case 'u':
 					if (event.ctrlKey) {
-						// Ctrl+U - page up
-						this.scrollableState.handleScrollDelta(-this.getPageScrollStep())
+						// Ctrl+U - half page up
+						this.scrollableState.handleScrollDelta(
+							-Math.max(1, Math.floor(this.getPageScrollStep() / 2)),
+						)
 						return KeyEventResult.handled
 					}
 					break
 
 				case 'd':
 					if (event.ctrlKey) {
-						// Ctrl+D - page down
-						this.scrollableState.handleScrollDelta(this.getPageScrollStep())
+						// Ctrl+D - half page down
+						this.scrollableState.handleScrollDelta(
+							Math.max(1, Math.floor(this.getPageScrollStep() / 2)),
+						)
 						return KeyEventResult.handled
 					}
 					break
@@ -219,6 +223,9 @@ export class ScrollBehavior {
 	 */
 	private getPageScrollStep(): number {
 		// Page scroll is typically the viewport height
+		if (this.scrollableState.controller.viewportDimension > 0) {
+			return this.scrollableState.controller.viewportDimension
+		}
 		// For now, use a reasonable default
 		return 10
 	}

@@ -82,6 +82,8 @@ export function ensureVisible(
 	// Determine if scrolling is needed and calculate new offset
 	let newOffset = currentOffset
 
+    // If padding is 0, we should be strict about visibility.
+    // targetRect.top < 0 means it's partially or fully above the viewport.
 	if (targetRect.top < padding) {
 		// Target is above viewport - scroll up
 		newOffset = currentOffset + targetRect.top - padding
@@ -96,6 +98,9 @@ export function ensureVisible(
 	// Clamp to valid scroll range
 	const maxExtent = scrollController.maxScrollExtent
 	newOffset = Math.max(0, Math.min(newOffset, maxExtent))
+
+    // Ensure integer scroll positions for TUI
+    newOffset = Math.round(newOffset)
 
 	// Apply scroll offset
 	if (newOffset !== currentOffset) {
