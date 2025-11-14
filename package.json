@@ -1,0 +1,21 @@
+{
+  "name": "qdiff",
+  "version": "1.0.0",
+  "description": "Magit clone",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "bun build src/index.ts --outfile dist/qdiff --target node",
+    "start": "bun src/index.ts"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "wrap-ansi": "^9.0.0",
+    "execa": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.1"
+  }
+}

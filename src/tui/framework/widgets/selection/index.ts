@@ -1,0 +1,5 @@
+export * from './inherited-selection-area.js'
+export { HighlightMode } from './interfaces.js'
+export * from './selection-area.js'
+export * from './selection-area-controller.js'
+export * from './selection-core.js'
