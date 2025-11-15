@@ -1,6 +1,6 @@
 import { execa } from 'execa';
+import { spawn } from 'node:child_process';
 import chalk from 'chalk';
-import * as fs from 'node:fs';
 
 export interface FileEntry {
     path: string;
@@ -121,31 +121,56 @@ export async function getLastCommit(): Promise<CommitInfo | null> {
     }
 }
 
+export async function getRecentCommits(limit: number = 25): Promise<CommitInfo[]> {
+    try {
+        const { stdout } = await execa('git', ['log', `-${limit}`, '--format=%H%n%s%n%cn%n%cr']);
+        const lines = stdout.split('\n');
+        const commits: CommitInfo[] = [];
+        for (let i = 0; i < lines.length; i += 4) {
+             const sha = lines[i];
+             const message = lines[i+1];
+             const committer = lines[i+2];
+             // we can add relative date if needed, but interface CommitInfo might need update
+             // let's keep it simple for now and match CommitInfo
+             if (sha && message) {
+                 commits.push({ sha, message, committer });
+             }
+        }
+        return commits;
+    } catch (e) {
+        return [];
+    }
+}
+
+export async function fixupCommit(sha: string) {
+     await execa('git', ['commit', '--fixup', sha]);
+}
+
 export async function commit(all: boolean = false) {
     const args = ['commit'];
     if (all) {
         args.push('-a');
     }
     
-    // Try to use /dev/tty explicitly for interactive editor to avoid input dropping issues
-    // caused by contention between the TUI process and the subprocess.
-    let ttyFd: number | undefined;
-    try {
-        ttyFd = fs.openSync('/dev/tty', 'r+');
-    } catch (e) {
-        // ignore
-    }
+    // Use spawn directly with stdio: 'inherit' to ensure proper terminal interaction
+    // This mimics how the interactive_shell tool works in Amp CLI
+    await new Promise<void>((resolve, reject) => {
+        const child = spawn('git', args, {
+            stdio: 'inherit'
+        });
 
-    if (ttyFd !== undefined) {
-        try {
-            await execa('git', args, { stdio: [ttyFd, ttyFd, ttyFd] });
-        } finally {
-            fs.closeSync(ttyFd);
-        }
-    } else {
-        // Fallback if /dev/tty cannot be opened
-        await execa('git', args, { stdio: 'inherit' });
-    }
+        child.on('exit', (code) => {
+            if (code === 0) {
+                resolve();
+            } else {
+                reject(new Error(`Git commit failed with exit code ${code}`));
+            }
+        });
+
+        child.on('error', (err) => {
+            reject(err);
+        });
+    });
 }
 
 function processDiff(diff: string): string {

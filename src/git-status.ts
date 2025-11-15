@@ -30,11 +30,13 @@ import { ensureVisible } from './tui/framework/scrolling/ensure-visible.js';
 import type { KeyboardEvent } from './tui/lib/parser/types.js';
 import * as git from './git.js';
 import { GitStatusViewModel, GitAdapter, VisibleItem } from './git-status-vm.js';
+import { globalRegistry, registerDefaultBindings, KeyBinding } from './key-bindings.js';
 
 const realGitAdapter: GitAdapter = {
     getStatus: git.getStatus,
     getBranchName: git.getBranchName,
     getLastCommit: git.getLastCommit,
+    getRecentCommits: git.getRecentCommits,
     getRawDiff: git.getRawDiff,
     stageFile: git.stageFile,
     unstageFile: git.unstageFile,
@@ -48,6 +50,9 @@ const realGitAdapter: GitAdapter = {
             tui.resume();
             WidgetsBinding.instance.frameScheduler.requestFrame();
         }
+    },
+    fixupCommit: async (sha: string) => {
+        await git.fixupCommit(sha);
     }
 };
 
@@ -65,8 +70,9 @@ class GitStatusState extends State<GitStatusWidget> {
     private selectedItemKey = new GlobalKey();
     private pendingChord: string[] = [];
     private chordTimer: ReturnType<typeof setTimeout> | null = null;
-    
+
     initState() {
+        registerDefaultBindings();
         this.scrollController.followMode = false;
         this.vm = new GitStatusViewModel(realGitAdapter, () => {
             this.setState(() => {});
@@ -79,6 +85,7 @@ class GitStatusState extends State<GitStatusWidget> {
     }
 
     scrollToSelected() {
+        if (this.vm.isFixupMode) return; // Don't scroll main list in fixup mode
         WidgetsBinding.instance.frameScheduler.addPostFrameCallback(() => {
             const element = this.selectedItemKey.currentElement;
             if (element && element.renderObject) {
@@ -95,6 +102,14 @@ class GitStatusState extends State<GitStatusWidget> {
     }
 
     build(context: any): Widget {
+        if (this.vm.isFixupMode) {
+            return this.buildFixupView(context);
+        }
+
+        if (this.vm.showHelp) {
+            return this.buildHelpView(context);
+        }
+
         const widgetItems: Widget[] = [];
         
         // Determine selection range for highlighting
@@ -143,11 +158,19 @@ class GitStatusState extends State<GitStatusWidget> {
             })
         });
 
-        const statusText = ` ${this.vm.branchName} | Unstaged: ${this.vm.unstaged.length}, Staged: ${this.vm.staged.length} | Last: ${this.vm.formatLastCommit()}`;
+        let statusText = ` ${this.vm.branchName} | Unstaged: ${this.vm.unstaged.length}, Staged: ${this.vm.staged.length} | Last: ${this.vm.formatLastCommit()}`;
+        let statusBarColor = Colors.blue;
+
+        if (this.pendingChord.length > 0) {
+            const options = globalRegistry.getNextOptions(this.pendingChord);
+            const waitingFor = options.map(o => `${o.key} (${o.binding.description})`).join(' ');
+            statusText = ` Key ${this.pendingChord.join(' ')} pressed, waiting for: ${waitingFor}`;
+            statusBarColor = Colors.red;
+        }
 
         const statusBar = new Container({
             height: 1,
-            decoration: new BoxDecoration(Colors.blue),
+            decoration: new BoxDecoration(statusBarColor),
             child: new RichText({
                 text: new TextSpan(
                     statusText,
@@ -160,6 +183,119 @@ class GitStatusState extends State<GitStatusWidget> {
             children: [
                 new Expanded({ child: mainContent }),
                 statusBar
+            ],
+            crossAxisAlignment: CrossAxisAlignment.stretch
+        });
+    }
+
+    buildHelpView(context: any): Widget {
+        const bindings = globalRegistry.getBindings();
+        const categories = new Map<string, KeyBinding[]>();
+        
+        bindings.forEach(b => {
+            const cat = b.category || 'Other';
+            if (!categories.has(cat)) categories.set(cat, []);
+            categories.get(cat)!.push(b);
+        });
+
+        const items: Widget[] = [];
+        items.push(new Container({
+             decoration: new BoxDecoration(Colors.blue),
+             child: new RichText({
+                 text: new TextSpan(" Help (Press ? to close)", new TextStyle({ color: Colors.white, bold: true }))
+             })
+        }));
+
+        // Sort categories
+        const sortedCategories = Array.from(categories.keys()).sort();
+
+        sortedCategories.forEach((cat) => {
+            const list = categories.get(cat)!;
+            items.push(new Container({
+                child: new RichText({
+                    text: new TextSpan(`\n ${cat}`, new TextStyle({ color: Colors.yellow, bold: true }))
+                })
+            }));
+            
+            list.forEach(b => {
+                items.push(new Container({
+                    child: new RichText({
+                        text: new TextSpan(`   ${b.label.padEnd(15)} ${b.description}`, new TextStyle({ color: Colors.white }))
+                    })
+                }));
+            });
+        });
+
+        const content = new Focus({
+            focusNode: this.focusNode,
+            autofocus: true,
+            onKey: (event) => {
+                if (event.key === '?' || event.key === 'Escape' || event.key === 'q') {
+                    this.vm.showHelp = false;
+                    this.setState(() => {});
+                    return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+            },
+            child: new SingleChildScrollView({
+                child: new Column({
+                    children: items,
+                    crossAxisAlignment: CrossAxisAlignment.stretch
+                })
+            })
+        });
+
+        return new Column({
+            children: [
+                new Expanded({ child: content })
+            ],
+            crossAxisAlignment: CrossAxisAlignment.stretch
+        });
+    }
+
+
+    buildFixupView(context: any): Widget {
+        const items: Widget[] = [];
+        
+        items.push(new Container({
+             decoration: new BoxDecoration(Colors.blue),
+             child: new RichText({
+                 text: new TextSpan(" Select commit for fixup (Enter to confirm, Esc to cancel)", new TextStyle({ color: Colors.white, bold: true }))
+             })
+        }));
+
+        if (this.vm.loading && this.vm.recentCommits.length === 0) {
+             items.push(new RichText({ text: new TextSpan(" Loading commits...", new TextStyle({ color: Colors.white })) }));
+        } else {
+            this.vm.recentCommits.forEach((commit, index) => {
+                 const isSelected = index === this.vm.fixupSelectedIndex;
+                 items.push(new Container({
+                     color: isSelected ? Colors.white : undefined,
+                     child: new RichText({
+                         text: new TextSpan(
+                             ` ${commit.sha.substring(0,7)} ${commit.message}`,
+                             new TextStyle({ color: isSelected ? Colors.black : Colors.white })
+                         )
+                     })
+                 }));
+            });
+        }
+
+        const content = new Focus({
+            focusNode: this.focusNode,
+            autofocus: true,
+            onKey: (event) => this.handleKey(event),
+            child: new SingleChildScrollView({
+                child: new Column({
+                    children: items,
+                    crossAxisAlignment: CrossAxisAlignment.stretch
+                })
+            })
+        });
+        
+        return new Column({
+            children: [
+                new Expanded({ child: content })
             ],
             crossAxisAlignment: CrossAxisAlignment.stretch
         });
@@ -274,76 +410,71 @@ class GitStatusState extends State<GitStatusWidget> {
     }
 
     handleKey(event: KeyboardEvent): KeyEventResult {
-        if (this.pendingChord.length > 0 || event.key === 'c') {
-            if (this.chordTimer) {
-                clearTimeout(this.chordTimer);
-                this.chordTimer = null;
+        if (this.vm.isFixupMode) {
+             if (event.key === 'ArrowUp') {
+                  this.vm.fixupSelectedIndex = Math.max(0, this.vm.fixupSelectedIndex - 1);
+                  this.setState(() => {});
+                  return KeyEventResult.handled;
+             }
+             if (event.key === 'ArrowDown') {
+                  this.vm.fixupSelectedIndex = Math.min(this.vm.recentCommits.length - 1, this.vm.fixupSelectedIndex + 1);
+                  this.setState(() => {});
+                  return KeyEventResult.handled;
+             }
+             if (event.key === 'Enter') {
+                  const commit = this.vm.recentCommits[this.vm.fixupSelectedIndex];
+                  if (commit) {
+                      this.vm.isFixupMode = false;
+                      this.vm.fixup(commit.sha);
+                  }
+                  return KeyEventResult.handled;
+             }
+             if (event.key === 'Escape' || event.key === 'q' || (event.key === 'g' && event.ctrlKey)) {
+                  this.vm.isFixupMode = false;
+                  this.setState(() => {});
+                  return KeyEventResult.handled;
+             }
+             return KeyEventResult.handled;
+        }
+
+        // Reset timer if it exists
+        if (this.chordTimer) {
+            clearTimeout(this.chordTimer);
+            this.chordTimer = null;
+        }
+
+        const nextChord = [...this.pendingChord, event.key];
+        
+        // 1. Check for exact match
+        const match = globalRegistry.findMatch(nextChord);
+        if (match) {
+            match.action(this.vm, { quit: () => process.exit(0) });
+            this.pendingChord = [];
+            if (match.category === 'Navigation') {
+                this.scrollToSelected();
             }
+            this.setState(() => {}); // Ensure UI updates
+            return KeyEventResult.handled;
+        }
 
-            this.pendingChord.push(event.key);
-            const chord = this.pendingChord.join(' ');
-
-            if (chord === 'c c') {
-                this.vm.commit(false);
+        // 2. Check for prefix
+        if (globalRegistry.isPrefix(nextChord)) {
+            this.pendingChord = nextChord;
+            this.chordTimer = setTimeout(() => {
                 this.pendingChord = [];
-                return KeyEventResult.handled;
-            }
-
-            if (chord === 'c - a c') {
-                this.vm.commit(true);
-                this.pendingChord = [];
-                return KeyEventResult.handled;
-            }
-
-            const validChords = ['c c', 'c - a c'];
-            const isPrefix = validChords.some(c => c.startsWith(chord));
-
-            if (isPrefix) {
-                this.chordTimer = setTimeout(() => {
-                    this.pendingChord = [];
-                }, 750);
-                return KeyEventResult.handled;
-            } else {
-                this.pendingChord = [];
-            }
+                this.setState(() => {});
+            }, 1000);
+            this.setState(() => {});
+            return KeyEventResult.handled;
         }
 
-        if (event.key === 'ArrowDown') {
-            this.vm.moveSelection(1);
-            this.scrollToSelected();
-            return KeyEventResult.handled;
+        // 3. If we had a pending chord but this key broke it, try the key alone
+        if (this.pendingChord.length > 0) {
+            this.pendingChord = [];
+            // Recursively handle the key as if no chord was pending
+            return this.handleKey(event);
         }
-        if (event.key === 'ArrowUp') {
-            this.vm.moveSelection(-1);
-            this.scrollToSelected();
-            return KeyEventResult.handled;
-        }
-        if (event.key === ' ') {
-            if (event.ctrlKey || true) { 
-                 this.vm.toggleLineSelectionMode();
-                 return KeyEventResult.handled;
-            }
-        }
-        if (event.key === 's') {
-            this.vm.stageSelection();
-            return KeyEventResult.handled;
-        }
-        if (event.key === 'u') {
-            this.vm.unstageSelection();
-            return KeyEventResult.handled;
-        }
-        if (event.key === 'Tab') {
-            this.vm.toggleExpand();
-            return KeyEventResult.handled;
-        }
-        if (event.key === 'g') {
-            this.vm.refresh();
-            return KeyEventResult.handled;
-        }
-        if (event.key === 'q') {
-            process.exit(0);
-            return KeyEventResult.handled;
-        }
+
         return KeyEventResult.ignored;
     }
 }

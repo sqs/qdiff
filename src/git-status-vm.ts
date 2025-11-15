@@ -5,11 +5,13 @@ export interface GitAdapter {
     getStatus(): Promise<{ staged: FileEntry[], unstaged: FileEntry[] }>;
     getBranchName(): Promise<string>;
     getLastCommit(): Promise<CommitInfo | null>;
+    getRecentCommits(limit: number): Promise<CommitInfo[]>;
     getRawDiff(path: string, staged: boolean, isUntracked?: boolean): Promise<string>;
     stageFile(path: string): Promise<void>;
     unstageFile(path: string): Promise<void>;
     applyPatch(patch: string, reverse: boolean): Promise<void>;
     commit(all: boolean): Promise<void>;
+    fixupCommit(sha: string): Promise<void>;
 }
 
 export interface VisibleItem {
@@ -37,6 +39,11 @@ export class GitStatusViewModel {
     
     public lineSelectionMode = false;
     public selectionAnchor = -1;
+
+    public recentCommits: CommitInfo[] = [];
+    public isFixupMode = false;
+    public fixupSelectedIndex = 0;
+    public showHelp = false;
 
     constructor(private git: GitAdapter, private onStateChange: () => void) {}
 
@@ -454,6 +461,33 @@ export class GitStatusViewModel {
         this.notify();
         try {
             await this.git.commit(all);
+            await this.refresh();
+        } catch (e) {
+            console.error(e);
+        } finally {
+            this.loading = false;
+            this.notify();
+        }
+    }
+
+    async loadRecentCommits() {
+        this.loading = true;
+        this.notify();
+        try {
+            this.recentCommits = await this.git.getRecentCommits(25);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            this.loading = false;
+            this.notify();
+        }
+    }
+
+    async fixup(sha: string) {
+        this.loading = true;
+        this.notify();
+        try {
+            await this.git.fixupCommit(sha);
             await this.refresh();
         } catch (e) {
             console.error(e);
