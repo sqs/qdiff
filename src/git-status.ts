@@ -85,10 +85,6 @@ class GitStatusState extends State<GitStatusWidget> {
         this.vm.refresh();
     }
 
-    formatLastCommit(): string {
-        return this.vm.formatLastCommit();
-    }
-
     scrollToSelected() {
         if (this.vm.isFixupMode) return; // Don't scroll main list in fixup mode
         WidgetsBinding.instance.frameScheduler.addPostFrameCallback(() => {
@@ -162,15 +158,41 @@ class GitStatusState extends State<GitStatusWidget> {
                 })
             })
         });
-
-        let statusText = ` ${this.vm.branchName}  \u00B7  Untracked: ${this.vm.untracked.length}, Unstaged: ${this.vm.unstaged.length}, Staged: ${this.vm.staged.length}  \u00B7  Last: ${this.vm.formatLastCommit()}`;
-        let statusBarColor = Colors.rgb(45, 45, 45);
+        
+        let rootTextSpan: TextSpan;
+        let statusBarColor: any = undefined;
 
         if (this.pendingChord.length > 0) {
             const options = globalRegistry.getNextOptions(this.pendingChord);
             const waitingFor = options.map(o => `${o.key} (${o.binding.description})`).join(' ');
-            statusText = ` Key ${this.pendingChord.join(' ')} pressed, waiting for: ${waitingFor}`;
+            const statusText = ` Key ${this.pendingChord.join(' ')} pressed, waiting for: ${waitingFor}`;
             statusBarColor = Colors.rgb(100, 0, 0);
+            rootTextSpan = new TextSpan(
+                statusText,
+                new TextStyle({ color: Colors.rgb(220, 220, 220) })
+            );
+        } else {
+            const children: TextSpan[] = [];
+            
+            // Branch
+            children.push(new TextSpan(` ${this.vm.branchName}  \u00B7  `, new TextStyle({ color: Colors.rgb(220, 220, 220) })));
+            
+            if (this.vm.lastCommit) {
+                 const { sha, message, committer } = this.vm.lastCommit;
+                 const shortSha = sha.substring(0, 6);
+                 
+                 // SHA (muted)
+                 children.push(new TextSpan(shortSha, new TextStyle({ color: Colors.rgb(140, 140, 140) })));
+                 
+                 let rest = ` ${message} \u2014 ${committer}`;
+                 if (rest.length > 74) {
+                     rest = rest.substring(0, 71) + '...';
+                 }
+                 
+                 children.push(new TextSpan(rest, new TextStyle({ color: Colors.rgb(220, 220, 220) })));
+            }
+            
+            rootTextSpan = new TextSpan(undefined, undefined, children);
         }
 
         const statusBar = new Container({
@@ -179,10 +201,7 @@ class GitStatusState extends State<GitStatusWidget> {
                 new Border(new BorderSide(Colors.rgb(80, 80, 80)))
             ),
             child: new RichText({
-                text: new TextSpan(
-                    statusText,
-                    new TextStyle({ color: Colors.rgb(220, 220, 220) })
-                )
+                text: rootTextSpan
             })
         });
 
@@ -343,7 +362,7 @@ class GitStatusState extends State<GitStatusWidget> {
             content = new RichText({
                 text: new TextSpan(
                     item.text || '',
-                    new TextStyle({ color: (item.id.includes('unstaged') || item.id.includes('untracked')) ? Colors.red : Colors.green, bold: true })
+                    new TextStyle({ color: Colors.white, bold: true })
                 )
             });
         } else if (item.type === 'message') {
