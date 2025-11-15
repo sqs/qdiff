@@ -25,6 +25,10 @@ import {
     RenderBox,
     MouseRegion,
     Expanded,
+    Stack,
+    Center,
+    Border,
+    BorderSide,
 } from './tui/framework/index.js';
 import { ensureVisible } from './tui/framework/scrolling/ensure-visible.js';
 import type { KeyboardEvent } from './tui/lib/parser/types.js';
@@ -252,6 +256,7 @@ class GitStatusState extends State<GitStatusWidget> {
             crossAxisAlignment: CrossAxisAlignment.stretch
         });
     }
+
 
 
     buildFixupView(context: any): Widget {
