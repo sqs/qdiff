@@ -3,7 +3,7 @@
 ## Commands
 - **Build**: `bun run build` (outputs to `dist/qdiff`)
 - **Run**: `bun src/index.ts`
-- **Test**: No automated tests configured.
+- **Test**: `bun test`
 
 ## Architecture
 - **Type**: TUI Git client (Magit clone).

@@ -9,7 +9,7 @@ export interface FileEntry {
 }
 
 export async function getStatus(): Promise<{ staged: FileEntry[], unstaged: FileEntry[] }> {
-    const { stdout } = await execa('git', ['status', '--porcelain']);
+    const { stdout } = await execa('git', ['status', '--porcelain', '-u']);
     const lines = stdout.split('\n').filter(Boolean);
     const staged: FileEntry[] = [];
     const unstaged: FileEntry[] = [];
@@ -57,19 +57,32 @@ export async function getDiff(path: string, staged: boolean): Promise<string> {
 }
 }
 
-export async function getRawDiff(path: string, staged: boolean): Promise<string> {
-const args = ['diff', '--no-color']; // Ensure no color codes for parsing
-if (staged) {
-    args.push('--cached');
-}
-args.push(path);
-try {
-    const { stdout } = await execa('git', args);
-    return stdout;
-} catch (e) {
-    console.error('Error getting raw diff:', e);
-    return "";
-}
+export async function getRawDiff(path: string, staged: boolean, isUntracked: boolean = false): Promise<string> {
+    if (isUntracked) {
+        try {
+             // Use --no-index to compare /dev/null with the new file to generate a creation diff
+             const { stdout } = await execa('git', ['diff', '--no-index', '--', '/dev/null', path]);
+             return stdout;
+        } catch (e: any) {
+             // git diff --no-index returns exit code 1 if there are differences, which is expected
+             if (e.stdout) return e.stdout;
+             console.error('Error getting untracked diff:', e);
+             return "";
+        }
+    }
+
+    const args = ['diff', '--no-color']; // Ensure no color codes for parsing
+    if (staged) {
+        args.push('--cached');
+    }
+    args.push(path);
+    try {
+        const { stdout } = await execa('git', args);
+        return stdout;
+    } catch (e) {
+        console.error('Error getting raw diff:', e);
+        return "";
+    }
 }
 
 export async function applyPatch(patch: string, reverse: boolean = false) {
