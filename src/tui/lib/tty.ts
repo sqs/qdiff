@@ -4,31 +4,6 @@ import tty from 'node:tty'
 import logger from '../logger.js'
 
 /**
- * Check if running on Bun <1.2.22 which has /dev/tty bugs
- */
-function isOldBunWithTTYBug(): boolean {
-	const bunVersion = process.versions.bun
-	if (!bunVersion) {
-		return false
-	}
-	const parts = bunVersion.split('.').map(Number)
-	const major = parts[0] ?? 0
-	const minor = parts[1] ?? 0
-	const patch = parts[2] ?? 0
-
-	if (!Number.isFinite(major) || !Number.isFinite(minor) || !Number.isFinite(patch)) {
-		return false
-	}
-
-	// Bug fixed in 1.2.22
-	if (major !== 1 || minor !== 2) {
-		return false
-	}
-
-	return patch < 22
-}
-
-/**
  * Tty type for terminal input abstraction
  * Provides a minimal interface for terminal input operations
  * Output is handled directly via process.stdout
@@ -231,19 +206,11 @@ function createStdinTty(): Tty {
 
 /**
  * Create a Tty instance
- * On Unix-like systems, opens /dev/tty (uses process.stdin on old Bun)
+ * On Unix-like systems, opens /dev/tty
  * On Windows, uses process.stdin
  */
 export function createTty(): Tty {
 	if (process.platform === 'win32') {
-		return createStdinTty()
-	}
-
-	// Use process.stdin on Bun <1.2.22 to avoid ENXIO errors
-	if (isOldBunWithTTYBug()) {
-		logger.warn(
-			'Detected Bun <1.2.22 which has known /dev/tty issues. Please upgrade to Bun 1.2.22 or later for proper TTY support. Using process.stdin instead.',
-		)
 		return createStdinTty()
 	}
 
