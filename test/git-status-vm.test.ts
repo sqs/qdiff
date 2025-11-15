@@ -45,17 +45,16 @@ describe("GitStatusViewModel", () => {
         await vm.refresh();
 
         expect(vm.items.length).toBeGreaterThan(0);
-        // Header(untracked) -> Header(unstaged) -> File2 -> Header(staged) -> File1
-        // Index 0: Untracked header
-        // Index 1: Unstaged header
-        // Index 2: File2 (unstaged)
-        // Index 3: Staged header
-        // Index 4: File1 (staged)
-        expect(vm.items[4].entry?.path).toBe("file1.ts");
-        expect(vm.items[2].entry?.path).toBe("file2.ts");
+        // Order: Unstaged Header -> File2 -> Staged Header -> File1
+        // Index 0: Unstaged header
+        // Index 1: File2 (unstaged)
+        // Index 2: Staged header
+        // Index 3: File1 (staged)
+        expect(vm.items[3].entry?.path).toBe("file1.ts");
+        expect(vm.items[1].entry?.path).toBe("file2.ts");
     });
 
-    it("navigates selection skipping non-selectable items", async () => {
+    it("navigates selection including headers", async () => {
         git.statusResult = {
             staged: [{ path: "file1.ts", status: "M", staged: true, key: "staged:file1.ts" }],
             unstaged: [{ path: "file2.ts", status: "M", staged: false, key: "unstaged:file2.ts" }],
@@ -63,18 +62,28 @@ describe("GitStatusViewModel", () => {
         };
         await vm.refresh();
 
-        // Order: Untracked Hdr (0), Unstaged Hdr (1), File2 (2), Staged Hdr (3), File1 (4)
+        // Order: Unstaged Hdr (0), File2 (1), Staged Hdr (2), File1 (3)
         
-        // First selectable is File2 at index 2
-        expect(vm.selectedIndex).toBe(2); 
+        // First selectable is Unstaged Header at index 0
+        expect(vm.selectedIndex).toBe(0); 
+        expect(vm.items[vm.selectedIndex].id).toBe("header-unstaged");
+
+        // Move down -> File2
+        vm.moveSelection(1);
+        expect(vm.selectedIndex).toBe(1);
         expect(vm.items[vm.selectedIndex].id).toBe("unstaged:file2.ts");
 
-        // Move down -> Skip Staged Header -> File1
+        // Move down -> Staged Header
         vm.moveSelection(1);
-        expect(vm.selectedIndex).toBe(4);
+        expect(vm.selectedIndex).toBe(2);
+        expect(vm.items[vm.selectedIndex].id).toBe("header-staged");
+
+        // Move down -> File1
+        vm.moveSelection(1);
+        expect(vm.selectedIndex).toBe(3);
         expect(vm.items[vm.selectedIndex].id).toBe("staged:file1.ts");
 
-        // Move up -> Back to file2
+        // Move up -> Staged Header
         vm.moveSelection(-1);
         expect(vm.selectedIndex).toBe(2);
     });
@@ -87,8 +96,9 @@ describe("GitStatusViewModel", () => {
         };
         await vm.refresh();
 
-        // Select file1 (staged) at index 4
-        vm.moveSelection(1); 
+        // Select file1 (staged) at index 3
+        // 0: Unstaged Hdr, 1: File2, 2: Staged Hdr, 3: File1
+        vm.selectedIndex = 3;
         expect(vm.items[vm.selectedIndex].id).toBe("staged:file1.ts");
 
         // Refresh again with same data
@@ -118,7 +128,7 @@ index 1..2 100644
         // Expand file
         await vm.toggleExpand(fileEntry);
         
-        // Order: Untracked Hdr(0), Unstaged Hdr(1), File(2), Hunk0(3), Line(4), Line(5), Hunk1(6), Line(7), Line(8), Staged Hdr(9)
+        // Order: Unstaged Hdr(0), File(1), Hunk0(2), Line(3), Line(4), Hunk1(5), Line(6), Line(7)
         
         vm.selectedIndex = vm.items.findIndex(i => i.id.includes("hunk-1") && i.type === 'hunk'); // Select Hunk 1
         expect(vm.items[vm.selectedIndex].id).toContain("hunk-1");
@@ -152,9 +162,9 @@ index 1..2 100644
         };
         await vm.refresh();
         
-        // Order: Untracked Hdr(0), Unstaged Hdr(1), File1(2), File2(3), Staged Hdr(4)
+        // Order: Unstaged Hdr(0), File1(1), File2(2)
         
-        vm.selectedIndex = 3;
+        vm.selectedIndex = 2;
         expect(vm.items[vm.selectedIndex].id).toBe("unstaged:file2.ts");
         
         // File 2 disappears (e.g. staged fully or reverted)
@@ -168,7 +178,7 @@ index 1..2 100644
         
         await vm.refresh();
         
-        // Should select File 1 (Index 2)
+        // Should select File 1 (Index 1)
         expect(vm.items[vm.selectedIndex].id).toBe("unstaged:file1.ts");
     });
     
@@ -188,13 +198,16 @@ index 1..2 100644
         
         await vm.refresh();
         expect(vm.expandedFiles.has("unstaged:file1.ts")).toBe(false);
-        // Untracked Hdr, Unstaged Hdr, File, Staged Hdr
-        expect(vm.items.length).toBe(4); 
+        // Unstaged Hdr, File
+        expect(vm.items.length).toBe(2); 
         
+        // Select File (Index 1)
+        vm.selectedIndex = 1;
+
         await vm.toggleExpand();
         expect(vm.expandedFiles.has("unstaged:file1.ts")).toBe(true);
         
-        expect(vm.items.length).toBeGreaterThan(4);
+        expect(vm.items.length).toBeGreaterThan(2);
     });
 
     it("stages full file", async () => {
@@ -202,8 +215,8 @@ index 1..2 100644
         git.statusResult = { staged: [], unstaged: [fileEntry], untracked: [] };
         await vm.refresh();
         
-        // Order: Untracked Hdr(0), Unstaged Hdr(1), File1(2), Staged Hdr(3)
-        vm.selectedIndex = 2;
+        // Order: Unstaged Hdr(0), File1(1)
+        vm.selectedIndex = 1;
         
         await vm.stageSelection();
         

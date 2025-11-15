@@ -57,14 +57,20 @@ export class GitStatusViewModel {
     updateItems() {
         const items: VisibleItem[] = [];
         
-        items.push({ id: 'header-untracked', type: 'header', text: 'Untracked', selectable: false });
-        this.untracked.forEach(entry => this.addFileItems(items, entry));
+        if (this.untracked.length > 0) {
+            items.push({ id: 'header-untracked', type: 'header', text: `Untracked (${this.untracked.length})`, selectable: true });
+            this.untracked.forEach(entry => this.addFileItems(items, entry));
+        }
 
-        items.push({ id: 'header-unstaged', type: 'header', text: 'Unstaged', selectable: false });
-        this.unstaged.forEach(entry => this.addFileItems(items, entry));
+        if (this.unstaged.length > 0) {
+            items.push({ id: 'header-unstaged', type: 'header', text: `Unstaged (${this.unstaged.length})`, selectable: true });
+            this.unstaged.forEach(entry => this.addFileItems(items, entry));
+        }
 
-        items.push({ id: 'header-staged', type: 'header', text: 'Staged', selectable: false });
-        this.staged.forEach(entry => this.addFileItems(items, entry));
+        if (this.staged.length > 0) {
+            items.push({ id: 'header-staged', type: 'header', text: `Staged (${this.staged.length})`, selectable: true });
+            this.staged.forEach(entry => this.addFileItems(items, entry));
+        }
         
         if (this.loading) items.push({ id: 'loading', type: 'message', text: 'Loading...', selectable: false });
         

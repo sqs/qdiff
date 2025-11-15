@@ -362,7 +362,11 @@ class GitStatusState extends State<GitStatusWidget> {
             content = new RichText({
                 text: new TextSpan(
                     item.text || '',
-                    new TextStyle({ color: Colors.white, bold: true })
+                    new TextStyle({ 
+                        color: isSelected ? Colors.black : Colors.white, 
+                        bold: true,
+                        backgroundColor: isSelected ? Colors.white : undefined
+                    })
                 )
             });
         } else if (item.type === 'message') {
