@@ -803,6 +803,17 @@ export class Tui {
 		// Pause tty (handles raw mode)
 		this.tty.pause()
 
+		// Explicitly pause process.stdin to prevent input contention
+		// even if we are using a separate tty stream
+		if (process.stdin && !process.stdin.destroyed) {
+			process.stdin.pause()
+			if (process.stdin.isTTY) {
+				try {
+					;(process.stdin as any).setRawMode(false)
+				} catch {}
+			}
+		}
+
 		this.suspended = true
 
 		// Flush stdout before suspending
