@@ -113,6 +113,14 @@ export function registerDefaultBindings() {
     });
 
     globalRegistry.register({
+        keys: ['k'],
+        label: 'k',
+        description: 'Discard unstaged changes (kill)',
+        category: 'Actions',
+        action: (vm) => vm.discardSelection()
+    });
+
+    globalRegistry.register({
         keys: ['Tab'],
         label: 'Tab',
         description: 'Toggle expand/collapse',

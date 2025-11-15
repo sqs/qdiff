@@ -44,6 +44,7 @@ const realGitAdapter: GitAdapter = {
     getRawDiff: git.getRawDiff,
     stageFile: git.stageFile,
     unstageFile: git.unstageFile,
+    discardFile: git.discardFile,
     applyPatch: git.applyPatch,
     commit: async (all: boolean) => {
         const tui = WidgetsBinding.instance.tuiInstance;

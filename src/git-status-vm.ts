@@ -1,5 +1,6 @@
 import type { FileEntry, CommitInfo } from './git.js';
 import { parseDiff, generatePatch, FileDiff, Hunk, DiffLine } from './diff-parser.js';
+import { appendFile } from 'node:fs/promises';
 
 export interface GitAdapter {
     getStatus(): Promise<{ staged: FileEntry[], unstaged: FileEntry[] }>;
@@ -9,7 +10,8 @@ export interface GitAdapter {
     getRawDiff(path: string, staged: boolean, isUntracked?: boolean): Promise<string>;
     stageFile(path: string): Promise<void>;
     unstageFile(path: string): Promise<void>;
-    applyPatch(patch: string, reverse: boolean): Promise<void>;
+    discardFile(path: string): Promise<void>;
+    applyPatch(patch: string, reverse: boolean, index: boolean): Promise<void>;
     commit(all: boolean): Promise<void>;
     fixupCommit(sha: string): Promise<void>;
 }
@@ -305,6 +307,128 @@ export class GitStatusViewModel {
         await this.processSelection(false);
     }
 
+    async discardSelection() {
+        // Identify selected items
+        let start = this.selectedIndex;
+        let end = this.selectedIndex;
+        
+        if (this.lineSelectionMode && this.selectionAnchor !== -1) {
+            start = Math.min(this.selectedIndex, this.selectionAnchor);
+            end = Math.max(this.selectedIndex, this.selectionAnchor);
+        }
+        
+        const selectedItems = this.items.slice(start, end + 1).filter(i => i.selectable);
+        if (selectedItems.length === 0) return;
+
+        const filesToProcess = new Map<string, { 
+            entry: FileEntry, 
+            fullFile: boolean,
+            hunks: Set<number>, 
+            lines: Set<string> 
+        }>();
+
+        // First pass: group by file
+        for (const item of selectedItems) {
+            if (!item.entry) continue;
+            
+            let fileData = filesToProcess.get(item.entry.key);
+            if (!fileData) {
+                fileData = { 
+                    entry: item.entry, 
+                    fullFile: false, 
+                    hunks: new Set(), 
+                    lines: new Set() 
+                };
+                filesToProcess.set(item.entry.key, fileData);
+            }
+
+            if (item.type === 'file') {
+                fileData.fullFile = true;
+            } else if (item.type === 'hunk') {
+                if (item.hunkIndex !== undefined) fileData.hunks.add(item.hunkIndex);
+            } else if (item.type === 'line') {
+                // If not in selection mode, line implies hunk
+                if (!this.lineSelectionMode) {
+                    if (item.hunkIndex !== undefined) fileData.hunks.add(item.hunkIndex);
+                } else {
+                    if (item.hunkIndex !== undefined && item.lineIndex !== undefined) {
+                        fileData.lines.add(`${item.hunkIndex}:${item.lineIndex}`);
+                    }
+                }
+            }
+        }
+
+        this.loading = true;
+        this.notify();
+        
+        try {
+            for (const [key, data] of filesToProcess) {
+                // Only allow killing unstaged changes
+                if (data.entry.staged) continue;
+
+                // Log killed diffs
+                let diffToKill = '';
+                if (data.fullFile) {
+                     // Get full diff for file
+                     diffToKill = await this.git.getRawDiff(data.entry.path, false, data.entry.status === '?');
+                } else {
+                    const diff = this.diffCache.get(key);
+                    if (diff) {
+                        diffToKill = generatePatch(diff, data.hunks, data.lines);
+                    }
+                }
+
+                if (diffToKill) {
+                    await appendFile('/tmp/qdiff-killed.log', `--- Killed at ${new Date().toISOString()} ---\n${diffToKill}\n`);
+                }
+                
+                if (data.fullFile) {
+                    await this.git.discardFile(data.entry.path);
+                } else {
+                    const diff = this.diffCache.get(key);
+                    if (diff) {
+                        const patch = generatePatch(diff, data.hunks, data.lines);
+                        // reverse=true to revert, index=false to apply to working directory
+                        await this.git.applyPatch(patch, true, false); 
+                    }
+                }
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+             // Determine the next item to select after refresh.
+            // We want to select the next item after the current selection range
+            // so that the cursor advances to the next actionable item.
+            let nextSelectableIndex = -1;
+            
+            // Try to find next selectable item
+            for (let i = end + 1; i < this.items.length; i++) {
+                if (this.items[i].selectable) {
+                    nextSelectableIndex = i;
+                    break;
+                }
+            }
+            
+            // If not found (e.g. at end of list), try previous
+            if (nextSelectableIndex === -1) {
+                for (let i = start - 1; i >= 0; i--) {
+                    if (this.items[i].selectable) {
+                        nextSelectableIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (nextSelectableIndex !== -1) {
+                this.selectedIndex = nextSelectableIndex;
+            }
+
+            this.lineSelectionMode = false;
+            this.selectionAnchor = -1;
+            await this.refresh();
+        }
+    }
+
     private async processSelection(stage: boolean) {
         // Identify selected items
         let start = this.selectedIndex;
@@ -373,7 +497,7 @@ export class GitStatusViewModel {
                     const diff = this.diffCache.get(key);
                     if (diff) {
                         const patch = generatePatch(diff, data.hunks, data.lines);
-                        await this.git.applyPatch(patch, !stage); // reverse if unstaging
+                        await this.git.applyPatch(patch, !stage, true); // reverse if unstaging, index=true
                     }
                 }
             }
