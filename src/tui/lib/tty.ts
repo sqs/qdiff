@@ -184,18 +184,30 @@ function createStdinTty(): Tty {
 		},
 
 		pause(): void {
-			// Restore raw mode and pause stream
+			// Restore raw mode
 			if (this.stdin && this.stdin.isTTY) {
 				this.stdin.setRawMode(false)
 			}
+
+			// Remove listener to stop buffering
+			if (this.stdin && this.dataCallback) {
+				this.stdin.removeListener('data', this.dataCallback)
+			}
+
 			this.stdin?.pause()
 		},
 
 		resume(): void {
-			// Set raw mode and resume stream
+			// Set raw mode
 			if (this.stdin && this.stdin.isTTY) {
 				this.stdin.setRawMode(true)
 			}
+
+			// Re-add listener
+			if (this.stdin && this.dataCallback) {
+				this.stdin.on('data', this.dataCallback)
+			}
+
 			this.stdin?.resume()
 		},
 

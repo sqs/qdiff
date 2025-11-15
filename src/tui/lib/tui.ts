@@ -803,6 +803,13 @@ export class Tui {
 		// Pause tty (handles raw mode)
 		this.tty.pause()
 
+		// Explicitly pause process.stdin to prevent input contention
+		// This is critical when spawning child processes that need stdin
+		// even if we use spawn with stdio: 'inherit'
+		if (process.stdin && !process.stdin.destroyed) {
+			process.stdin.pause()
+		}
+
 		this.suspended = true
 
 		// Flush stdout before suspending
