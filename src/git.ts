@@ -1,5 +1,6 @@
 import { execa } from 'execa';
 import chalk from 'chalk';
+import * as fs from 'node:fs';
 
 export interface FileEntry {
     path: string;
@@ -126,8 +127,25 @@ export async function commit(all: boolean = false) {
         args.push('-a');
     }
     
-    // We use stdio: 'inherit' to let git open the editor in the terminal
-    await execa('git', args, { stdio: 'inherit' });
+    // Try to use /dev/tty explicitly for interactive editor to avoid input dropping issues
+    // caused by contention between the TUI process and the subprocess.
+    let ttyFd: number | undefined;
+    try {
+        ttyFd = fs.openSync('/dev/tty', 'r+');
+    } catch (e) {
+        // ignore
+    }
+
+    if (ttyFd !== undefined) {
+        try {
+            await execa('git', args, { stdio: [ttyFd, ttyFd, ttyFd] });
+        } finally {
+            fs.closeSync(ttyFd);
+        }
+    } else {
+        // Fallback if /dev/tty cannot be opened
+        await execa('git', args, { stdio: 'inherit' });
+    }
 }
 
 function processDiff(diff: string): string {
