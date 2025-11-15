@@ -38,7 +38,17 @@ const realGitAdapter: GitAdapter = {
     getRawDiff: git.getRawDiff,
     stageFile: git.stageFile,
     unstageFile: git.unstageFile,
-    applyPatch: git.applyPatch
+    applyPatch: git.applyPatch,
+    commit: async (all: boolean) => {
+        const tui = WidgetsBinding.instance.tuiInstance;
+        tui.suspend();
+        try {
+            await git.commit(all);
+        } finally {
+            tui.resume();
+            WidgetsBinding.instance.frameScheduler.requestFrame();
+        }
+    }
 };
 
 class GitStatusWidget extends StatefulWidget {
@@ -53,6 +63,8 @@ class GitStatusState extends State<GitStatusWidget> {
     private focusNode = new FocusNode();
     private scrollController = new ScrollController();
     private selectedItemKey = new GlobalKey();
+    private pendingChord: string[] = [];
+    private chordTimer: ReturnType<typeof setTimeout> | null = null;
     
     initState() {
         this.scrollController.followMode = false;
@@ -262,6 +274,40 @@ class GitStatusState extends State<GitStatusWidget> {
     }
 
     handleKey(event: KeyboardEvent): KeyEventResult {
+        if (this.pendingChord.length > 0 || event.key === 'c') {
+            if (this.chordTimer) {
+                clearTimeout(this.chordTimer);
+                this.chordTimer = null;
+            }
+
+            this.pendingChord.push(event.key);
+            const chord = this.pendingChord.join(' ');
+
+            if (chord === 'c c') {
+                this.vm.commit(false);
+                this.pendingChord = [];
+                return KeyEventResult.handled;
+            }
+
+            if (chord === 'c - a c') {
+                this.vm.commit(true);
+                this.pendingChord = [];
+                return KeyEventResult.handled;
+            }
+
+            const validChords = ['c c', 'c - a c'];
+            const isPrefix = validChords.some(c => c.startsWith(chord));
+
+            if (isPrefix) {
+                this.chordTimer = setTimeout(() => {
+                    this.pendingChord = [];
+                }, 750);
+                return KeyEventResult.handled;
+            } else {
+                this.pendingChord = [];
+            }
+        }
+
         if (event.key === 'ArrowDown') {
             this.vm.moveSelection(1);
             this.scrollToSelected();

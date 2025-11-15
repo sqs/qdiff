@@ -9,6 +9,7 @@ export interface GitAdapter {
     stageFile(path: string): Promise<void>;
     unstageFile(path: string): Promise<void>;
     applyPatch(patch: string, reverse: boolean): Promise<void>;
+    commit(all: boolean): Promise<void>;
 }
 
 export interface VisibleItem {
@@ -419,5 +420,19 @@ export class GitStatusViewModel {
             return fullStr.substring(0, 77) + '...';
         }
         return fullStr;
+    }
+
+    async commit(all: boolean) {
+        this.loading = true;
+        this.notify();
+        try {
+            await this.git.commit(all);
+            await this.refresh();
+        } catch (e) {
+            console.error(e);
+        } finally {
+            this.loading = false;
+            this.notify();
+        }
     }
 }

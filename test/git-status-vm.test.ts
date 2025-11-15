@@ -12,6 +12,7 @@ class MockGitAdapter implements GitAdapter {
     stageFile = mock(async (path: string) => {});
     unstageFile = mock(async (path: string) => {});
     applyPatch = mock(async (patch: string, reverse: boolean) => {});
+    commit = mock(async (all: boolean) => {});
 
     async getStatus() { return this.statusResult; }
     async getBranchName() { return this.branchName; }

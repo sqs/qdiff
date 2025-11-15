@@ -120,6 +120,16 @@ export async function getLastCommit(): Promise<CommitInfo | null> {
     }
 }
 
+export async function commit(all: boolean = false) {
+    const args = ['commit'];
+    if (all) {
+        args.push('-a');
+    }
+    
+    // We use stdio: 'inherit' to let git open the editor in the terminal
+    await execa('git', args, { stdio: 'inherit' });
+}
+
 function processDiff(diff: string): string {
     const lines = diff.split('\n');
     // Filter out header lines
