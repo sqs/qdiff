@@ -17,4 +17,4 @@
 - **Language**: TypeScript (ESM).
 - **Imports**: Use `.js` extension for local file imports (e.g., `import ... from './file.js'`).
 - **Formatting**: Maintain consistency with existing code.
-- **Dependencies**: `chalk`, `execa`, `wrap-ansi`.
+- **Dependencies**: `chalk`, `execa`.

@@ -275,7 +275,7 @@ class GitStatusState extends State<GitStatusWidget> {
             this.vm.recentCommits.forEach((commit, index) => {
                  const isSelected = index === this.vm.fixupSelectedIndex;
                  items.push(new Container({
-                     color: isSelected ? Colors.white : undefined,
+                     decoration: isSelected ? new BoxDecoration(Colors.white) : undefined,
                      child: new RichText({
                          text: new TextSpan(
                              ` ${commit.sha.substring(0,7)} ${commit.message}`,
@@ -398,13 +398,14 @@ class GitStatusState extends State<GitStatusWidget> {
 
         // @ts-ignore
         const row = new Container({
-             key: isFocused ? this.selectedItemKey : undefined,
+             key: (item.type === 'file' || !isFocused) ? undefined : this.selectedItemKey,
              // @ts-ignore
              child: content
         });
         
         if (item.type === 'file') {
              return new MouseRegion({
+                key: isFocused ? this.selectedItemKey : undefined,
                 cursor: 'pointer',
                 onClick: () => this.vm.toggleExpand(item.entry),
                 child: row
