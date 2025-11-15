@@ -3,7 +3,7 @@ import { GitStatusViewModel, GitAdapter, VisibleItem } from "../src/git-status-v
 import type { FileEntry, CommitInfo } from "../src/git.js";
 
 class MockGitAdapter implements GitAdapter {
-    statusResult: { staged: FileEntry[], unstaged: FileEntry[] } = { staged: [], unstaged: [] };
+    statusResult: { staged: FileEntry[], unstaged: FileEntry[], untracked: FileEntry[] } = { staged: [], unstaged: [], untracked: [] };
     branchName = "main";
     lastCommit = { sha: "123456", message: "test", committer: "me" };
     rawDiffs = new Map<string, string>();
@@ -38,66 +38,68 @@ describe("GitStatusViewModel", () => {
     it("initializes and loads data", async () => {
         git.statusResult = {
             staged: [{ path: "file1.ts", status: "M", staged: true, key: "staged:file1.ts" }],
-            unstaged: [{ path: "file2.ts", status: "M", staged: false, key: "unstaged:file2.ts" }]
+            unstaged: [{ path: "file2.ts", status: "M", staged: false, key: "unstaged:file2.ts" }],
+            untracked: []
         };
 
         await vm.refresh();
 
         expect(vm.items.length).toBeGreaterThan(0);
-        // Header(staged) -> File1 -> Header(unstaged) -> File2
-        expect(vm.items[1].entry?.path).toBe("file1.ts");
-        expect(vm.items[3].entry?.path).toBe("file2.ts");
+        // Header(untracked) -> Header(unstaged) -> File2 -> Header(staged) -> File1
+        // Index 0: Untracked header
+        // Index 1: Unstaged header
+        // Index 2: File2 (unstaged)
+        // Index 3: Staged header
+        // Index 4: File1 (staged)
+        expect(vm.items[4].entry?.path).toBe("file1.ts");
+        expect(vm.items[2].entry?.path).toBe("file2.ts");
     });
 
     it("navigates selection skipping non-selectable items", async () => {
         git.statusResult = {
             staged: [{ path: "file1.ts", status: "M", staged: true, key: "staged:file1.ts" }],
-            unstaged: [{ path: "file2.ts", status: "M", staged: false, key: "unstaged:file2.ts" }]
+            unstaged: [{ path: "file2.ts", status: "M", staged: false, key: "unstaged:file2.ts" }],
+            untracked: []
         };
         await vm.refresh();
 
-        // Initial selection is 0? Wait, 0 is header "Staged Changes" which is not selectable.
-        // Does refresh set selection to first selectable?
-        // In refresh(): if selectedIndex >= items.length (0 >= 4), no.
-        // Then checks if items[selectedIndex] is selectable.
-        // Index 0 is "Staged Changes" header (selectable=false).
-        // Logic should move it to index 1 (file1.ts).
-
-        expect(vm.selectedIndex).toBe(1); 
-        expect(vm.items[vm.selectedIndex].id).toBe("staged:file1.ts");
-
-        // Move down -> Skip unstaged header
-        vm.moveSelection(1);
-        // Index 2 is "Unstaged Changes" header (selectable=false).
-        // Should jump to index 3 (file2.ts).
-        expect(vm.selectedIndex).toBe(3);
+        // Order: Untracked Hdr (0), Unstaged Hdr (1), File2 (2), Staged Hdr (3), File1 (4)
+        
+        // First selectable is File2 at index 2
+        expect(vm.selectedIndex).toBe(2); 
         expect(vm.items[vm.selectedIndex].id).toBe("unstaged:file2.ts");
 
-        // Move up -> Back to file1
+        // Move down -> Skip Staged Header -> File1
+        vm.moveSelection(1);
+        expect(vm.selectedIndex).toBe(4);
+        expect(vm.items[vm.selectedIndex].id).toBe("staged:file1.ts");
+
+        // Move up -> Back to file2
         vm.moveSelection(-1);
-        expect(vm.selectedIndex).toBe(1);
+        expect(vm.selectedIndex).toBe(2);
     });
 
     it("persists selection across refreshes", async () => {
         git.statusResult = {
             staged: [{ path: "file1.ts", status: "M", staged: true, key: "staged:file1.ts" }],
-            unstaged: [{ path: "file2.ts", status: "M", staged: false, key: "unstaged:file2.ts" }]
+            unstaged: [{ path: "file2.ts", status: "M", staged: false, key: "unstaged:file2.ts" }],
+            untracked: []
         };
         await vm.refresh();
 
-        // Select file2
+        // Select file1 (staged) at index 4
         vm.moveSelection(1); 
-        expect(vm.items[vm.selectedIndex].id).toBe("unstaged:file2.ts");
+        expect(vm.items[vm.selectedIndex].id).toBe("staged:file1.ts");
 
         // Refresh again with same data
         await vm.refresh();
-        expect(vm.items[vm.selectedIndex].id).toBe("unstaged:file2.ts");
+        expect(vm.items[vm.selectedIndex].id).toBe("staged:file1.ts");
     });
 
     it("restores selection to nearest hunk if exact hunk disappears", async () => {
         // Setup: File with 2 hunks. Expand it. Select 2nd hunk.
         const fileEntry = { path: "file1.ts", status: "M", staged: false, key: "unstaged:file1.ts" };
-        git.statusResult = { staged: [], unstaged: [fileEntry] };
+        git.statusResult = { staged: [], unstaged: [fileEntry], untracked: [] };
         
         const diffWith2Hunks = `diff --git a/file1.ts b/file1.ts
 index 1..2 100644
@@ -116,18 +118,12 @@ index 1..2 100644
         // Expand file
         await vm.toggleExpand(fileEntry);
         
-        // Items: Header, File, Hunk0, Line0-0, Line0-1, Hunk1, Line1-0, Line1-1
-        // Indices: 0 (Header), 1 (File), 2 (Hunk0), 3, 4, 5 (Hunk1)
+        // Order: Untracked Hdr(0), Unstaged Hdr(1), File(2), Hunk0(3), Line(4), Line(5), Hunk1(6), Line(7), Line(8), Staged Hdr(9)
         
         vm.selectedIndex = vm.items.findIndex(i => i.id.includes("hunk-1") && i.type === 'hunk'); // Select Hunk 1
         expect(vm.items[vm.selectedIndex].id).toContain("hunk-1");
         
         // Simulate staging Hunk 1. Now file has only Hunk 0.
-        // But in reality, if we stage hunk 1, it moves to staged.
-        // The unstaged version now only has hunk 0 (if they were independent).
-        // Let's say we staged it and now we refresh.
-        // The new diff for unstaged file only has the first hunk.
-        
         const diffWith1Hunk = `diff --git a/file1.ts b/file1.ts
 index 1..2 100644
 --- a/file1.ts
@@ -140,7 +136,7 @@ index 1..2 100644
         
         await vm.refresh();
         
-        // Should select Hunk 0 (index 2) because Hunk 1 is gone and Hunk 0 is the nearest preceding.
+        // Should select Hunk 0 because Hunk 1 is gone and Hunk 0 is the nearest preceding.
         expect(vm.items[vm.selectedIndex].id).toContain("hunk-0");
     });
 
@@ -151,14 +147,12 @@ index 1..2 100644
             unstaged: [
                 { path: "file1.ts", status: "M", staged: false, key: "unstaged:file1.ts" },
                 { path: "file2.ts", status: "M", staged: false, key: "unstaged:file2.ts" }
-            ]
+            ],
+            untracked: []
         };
         await vm.refresh();
         
-        // Select file2 (Index 3: Header, File1, Header, File2 -> wait logic: Header, File1 (staged?), wait.)
-        // Header Staged (0), Header Unstaged (1), File1 (2), File2 (3)? No.
-        // Logic: Header Staged, Staged Items, Header Unstaged, Unstaged Items.
-        // If staged is empty: Header Staged (0), Header Unstaged (1), File1 (2), File2 (3).
+        // Order: Untracked Hdr(0), Unstaged Hdr(1), File1(2), File2(3), Staged Hdr(4)
         
         vm.selectedIndex = 3;
         expect(vm.items[vm.selectedIndex].id).toBe("unstaged:file2.ts");
@@ -168,7 +162,8 @@ index 1..2 100644
             staged: [],
             unstaged: [
                 { path: "file1.ts", status: "M", staged: false, key: "unstaged:file1.ts" }
-            ]
+            ],
+            untracked: []
         };
         
         await vm.refresh();
@@ -179,7 +174,7 @@ index 1..2 100644
     
     it("handles expansion of files", async () => {
          const fileEntry = { path: "file1.ts", status: "M", staged: false, key: "unstaged:file1.ts" };
-        git.statusResult = { staged: [], unstaged: [fileEntry] };
+        git.statusResult = { staged: [], unstaged: [fileEntry], untracked: [] };
         
         const diff = `diff --git a/file1.ts b/file1.ts
 index 1..2 100644
@@ -193,31 +188,25 @@ index 1..2 100644
         
         await vm.refresh();
         expect(vm.expandedFiles.has("unstaged:file1.ts")).toBe(false);
-        expect(vm.items.length).toBe(3); // Header, Header, File
+        // Untracked Hdr, Unstaged Hdr, File, Staged Hdr
+        expect(vm.items.length).toBe(4); 
         
         await vm.toggleExpand();
         expect(vm.expandedFiles.has("unstaged:file1.ts")).toBe(true);
         
-        // Items should now include Hunk and Lines
-        // Header, Header, File, Hunk, Line(cntx), Line(-), Line(+)
-        // Actually parser output: -a +b. Context? diff-parser logic.
-        // @@ -1,1 +1,1 @@ -> header
-        // -a
-        // +b
-        expect(vm.items.length).toBeGreaterThan(3);
+        expect(vm.items.length).toBeGreaterThan(4);
     });
 
     it("stages full file", async () => {
         const fileEntry = { path: "file1.ts", status: "M", staged: false, key: "unstaged:file1.ts" };
-        git.statusResult = { staged: [], unstaged: [fileEntry] };
+        git.statusResult = { staged: [], unstaged: [fileEntry], untracked: [] };
         await vm.refresh();
         
-        // Select file1
+        // Order: Untracked Hdr(0), Unstaged Hdr(1), File1(2), Staged Hdr(3)
         vm.selectedIndex = 2;
         
         await vm.stageSelection();
         
         expect(git.stageFile).toHaveBeenCalledWith("file1.ts");
-        // refresh called implicitly
     });
 });

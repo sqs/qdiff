@@ -3,7 +3,7 @@ import { parseDiff, generatePatch, FileDiff, Hunk, DiffLine } from './diff-parse
 import { appendFile } from 'node:fs/promises';
 
 export interface GitAdapter {
-    getStatus(): Promise<{ staged: FileEntry[], unstaged: FileEntry[] }>;
+    getStatus(): Promise<{ staged: FileEntry[], unstaged: FileEntry[], untracked: FileEntry[] }>;
     getBranchName(): Promise<string>;
     getLastCommit(): Promise<CommitInfo | null>;
     getRecentCommits(limit: number): Promise<CommitInfo[]>;
@@ -32,6 +32,7 @@ export class GitStatusViewModel {
     public items: VisibleItem[] = [];
     public staged: FileEntry[] = [];
     public unstaged: FileEntry[] = [];
+    public untracked: FileEntry[] = [];
     public branchName: string = '';
     public lastCommit: CommitInfo | null = null;
     public selectedIndex = 0;
@@ -56,11 +57,14 @@ export class GitStatusViewModel {
     updateItems() {
         const items: VisibleItem[] = [];
         
-        items.push({ id: 'header-staged', type: 'header', text: 'Staged Changes', selectable: false });
-        this.staged.forEach(entry => this.addFileItems(items, entry));
-        
-        items.push({ id: 'header-unstaged', type: 'header', text: 'Unstaged Changes', selectable: false });
+        items.push({ id: 'header-untracked', type: 'header', text: 'Untracked', selectable: false });
+        this.untracked.forEach(entry => this.addFileItems(items, entry));
+
+        items.push({ id: 'header-unstaged', type: 'header', text: 'Unstaged', selectable: false });
         this.unstaged.forEach(entry => this.addFileItems(items, entry));
+
+        items.push({ id: 'header-staged', type: 'header', text: 'Staged', selectable: false });
+        this.staged.forEach(entry => this.addFileItems(items, entry));
         
         if (this.loading) items.push({ id: 'loading', type: 'message', text: 'Loading...', selectable: false });
         
@@ -131,11 +135,12 @@ export class GitStatusViewModel {
             ]);
             this.staged = status.staged;
             this.unstaged = status.unstaged;
+            this.untracked = status.untracked;
             this.branchName = branchName;
             this.lastCommit = lastCommit;
             
             // Refresh diffs for expanded files
-            const allEntries = [...this.staged, ...this.unstaged];
+            const allEntries = [...this.staged, ...this.unstaged, ...this.untracked];
             const validKeys = new Set(allEntries.map(e => e.key));
             
             // Clean up expandedFiles

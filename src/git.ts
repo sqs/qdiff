@@ -9,11 +9,12 @@ export interface FileEntry {
     key: string;
 }
 
-export async function getStatus(): Promise<{ staged: FileEntry[], unstaged: FileEntry[] }> {
+export async function getStatus(): Promise<{ staged: FileEntry[], unstaged: FileEntry[], untracked: FileEntry[] }> {
     const { stdout } = await execa('git', ['status', '--porcelain', '-u']);
     const lines = stdout.split('\n').filter(Boolean);
     const staged: FileEntry[] = [];
     const unstaged: FileEntry[] = [];
+    const untracked: FileEntry[] = [];
 
     for (const line of lines) {
         const x = line[0];
@@ -27,10 +28,10 @@ export async function getStatus(): Promise<{ staged: FileEntry[], unstaged: File
             unstaged.push({ path, status: y, staged: false, key: `unstaged:${path}` });
         }
         if (x === '?' && y === '?') {
-             unstaged.push({ path, status: '?', staged: false, key: `unstaged:${path}` });
+             untracked.push({ path, status: '?', staged: false, key: `untracked:${path}` });
         }
     }
-    return { staged, unstaged };
+    return { staged, unstaged, untracked };
 }
 
 export async function stageFile(path: string) {

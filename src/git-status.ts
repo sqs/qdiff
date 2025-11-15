@@ -163,23 +163,25 @@ class GitStatusState extends State<GitStatusWidget> {
             })
         });
 
-        let statusText = ` ${this.vm.branchName} | Unstaged: ${this.vm.unstaged.length}, Staged: ${this.vm.staged.length} | Last: ${this.vm.formatLastCommit()}`;
-        let statusBarColor = Colors.blue;
+        let statusText = ` ${this.vm.branchName}  \u00B7  Untracked: ${this.vm.untracked.length}, Unstaged: ${this.vm.unstaged.length}, Staged: ${this.vm.staged.length}  \u00B7  Last: ${this.vm.formatLastCommit()}`;
+        let statusBarColor = Colors.rgb(45, 45, 45);
 
         if (this.pendingChord.length > 0) {
             const options = globalRegistry.getNextOptions(this.pendingChord);
             const waitingFor = options.map(o => `${o.key} (${o.binding.description})`).join(' ');
             statusText = ` Key ${this.pendingChord.join(' ')} pressed, waiting for: ${waitingFor}`;
-            statusBarColor = Colors.red;
+            statusBarColor = Colors.rgb(100, 0, 0);
         }
 
         const statusBar = new Container({
-            height: 1,
-            decoration: new BoxDecoration(statusBarColor),
+            decoration: new BoxDecoration(
+                statusBarColor,
+                new Border(new BorderSide(Colors.rgb(80, 80, 80)))
+            ),
             child: new RichText({
                 text: new TextSpan(
                     statusText,
-                    new TextStyle({ color: Colors.white })
+                    new TextStyle({ color: Colors.rgb(220, 220, 220) })
                 )
             })
         });
@@ -341,7 +343,7 @@ class GitStatusState extends State<GitStatusWidget> {
             content = new RichText({
                 text: new TextSpan(
                     item.text || '',
-                    new TextStyle({ color: item.id.includes('unstaged') ? Colors.red : Colors.green, bold: true })
+                    new TextStyle({ color: (item.id.includes('unstaged') || item.id.includes('untracked')) ? Colors.red : Colors.green, bold: true })
                 )
             });
         } else if (item.type === 'message') {
