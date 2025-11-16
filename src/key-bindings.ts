@@ -78,7 +78,7 @@ export function registerDefaultBindings() {
 
     globalRegistry.register({
         keys: ['c', '-', 'a', 'c'],
-        label: 'c - a c',
+        label: 'c -a c',
         description: 'Commit all changes (including unstaged)',
         category: 'Commit',
         action: (vm) => vm.commit(true)

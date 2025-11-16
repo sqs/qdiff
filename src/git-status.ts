@@ -1,40 +1,36 @@
+import { GitAdapter, GitStatusViewModel, VisibleItem } from './git-status-vm.js';
+import * as git from './git.js';
+import { KeyBinding, globalRegistry, registerDefaultBindings } from './key-bindings.js';
 import {
-    StatefulWidget,
-    State,
-    Widget,
-    Column,
-    TextSpan,
-    RichText,
-    TextStyle,
-    Focus,
-    FocusNode,
-    KeyEventResult,
-    SingleChildScrollView,
-    AnsiText,
-    SizedBox,
-    Container,
-    BoxDecoration,
-    Colors,
-    EdgeInsets,
-    CrossAxisAlignment,
-    ScrollController,
-    Scrollbar,
-    GlobalKey,
-    WidgetsBinding,
-    BuildContextImpl,
-    RenderBox,
-    MouseRegion,
-    Expanded,
-    Stack,
-    Center,
     Border,
     BorderSide,
+    BoxDecoration,
+    BuildContextImpl,
+    Colors,
+    Column,
+    Container,
+    CrossAxisAlignment,
+    Expanded,
+    Focus,
+    FocusNode,
+    GlobalKey,
+    KeyEventResult,
+    MouseRegion,
+    RenderBox,
+    RichText,
+    ScrollController,
+    Scrollbar,
+    SingleChildScrollView,
+    SizedBox,
+    State,
+    StatefulWidget,
+    TextSpan,
+    TextStyle,
+    Widget,
+    WidgetsBinding
 } from './tui/framework/index.js';
 import { ensureVisible } from './tui/framework/scrolling/ensure-visible.js';
 import type { KeyboardEvent } from './tui/lib/parser/types.js';
-import * as git from './git.js';
-import { GitStatusViewModel, GitAdapter, VisibleItem } from './git-status-vm.js';
-import { globalRegistry, registerDefaultBindings, KeyBinding } from './key-bindings.js';
 
 const realGitAdapter: GitAdapter = {
     getStatus: git.getStatus,

@@ -1,6 +1,6 @@
-import type { FileEntry, CommitInfo } from './git.js';
-import { parseDiff, generatePatch, FileDiff, Hunk, DiffLine } from './diff-parser.js';
 import { appendFile } from 'node:fs/promises';
+import { DiffLine, FileDiff, generatePatch, Hunk, parseDiff } from './diff-parser.js';
+import type { CommitInfo, FileEntry } from './git.js';
 
 export interface GitAdapter {
     getStatus(): Promise<{ staged: FileEntry[], unstaged: FileEntry[], untracked: FileEntry[] }>;
@@ -56,23 +56,29 @@ export class GitStatusViewModel {
 
     updateItems() {
         const items: VisibleItem[] = [];
-        
+
+        const PADDED_MESSAGE_PREFIX='\n  '
+
         if (this.untracked.length > 0) {
-            items.push({ id: 'header-untracked', type: 'header', text: `Untracked (${this.untracked.length})`, selectable: true });
+            items.push({ id: 'header-untracked', type: 'header', text: `Untracked Files (${this.untracked.length})`, selectable: true });
             this.untracked.forEach(entry => this.addFileItems(items, entry));
         }
 
         if (this.unstaged.length > 0) {
-            items.push({ id: 'header-unstaged', type: 'header', text: `Unstaged (${this.unstaged.length})`, selectable: true });
+            items.push({ id: 'header-unstaged', type: 'header', text: `Unstaged Changes (${this.unstaged.length})`, selectable: true });
             this.unstaged.forEach(entry => this.addFileItems(items, entry));
         }
 
         if (this.staged.length > 0) {
-            items.push({ id: 'header-staged', type: 'header', text: `Staged (${this.staged.length})`, selectable: true });
+            items.push({ id: 'header-staged', type: 'header', text: `Staged Changes (${this.staged.length})`, selectable: true });
             this.staged.forEach(entry => this.addFileItems(items, entry));
         }
-        
-        if (this.loading) items.push({ id: 'loading', type: 'message', text: 'Loading...', selectable: false });
+
+        if (this.loading) items.push({ id: 'loading', type: 'message', text: PADDED_MESSAGE_PREFIX+'Loading...', selectable: false });
+
+        if (!this.loading && this.untracked.length === 0 && this.unstaged.length === 0 && this.staged.length === 0) {
+            items.push({id:'header-empty', type:'message',text:PADDED_MESSAGE_PREFIX+'No Changes',selectable:false})
+        }
         
         this.items = items;
     }
