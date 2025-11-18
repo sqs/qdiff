@@ -521,33 +521,6 @@ export class GitStatusViewModel {
         } catch (e) {
             console.error(e);
         } finally {
-            // Determine the next item to select after refresh.
-            // We want to select the next item after the current selection range
-            // so that the cursor advances to the next actionable item.
-            let nextSelectableIndex = -1;
-            
-            // Try to find next selectable item
-            for (let i = end + 1; i < this.items.length; i++) {
-                if (this.items[i].selectable) {
-                    nextSelectableIndex = i;
-                    break;
-                }
-            }
-            
-            // If not found (e.g. at end of list), try previous
-            if (nextSelectableIndex === -1) {
-                for (let i = start - 1; i >= 0; i--) {
-                    if (this.items[i].selectable) {
-                        nextSelectableIndex = i;
-                        break;
-                    }
-                }
-            }
-
-            if (nextSelectableIndex !== -1) {
-                this.selectedIndex = nextSelectableIndex;
-            }
-
             this.lineSelectionMode = false;
             this.selectionAnchor = -1;
             await this.refresh();
