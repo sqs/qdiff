@@ -50,7 +50,7 @@ export async function getDiff(path: string, staged: boolean): Promise<string> {
     // For untracked files, normally we can't diff.
     // We'll assume they are not expanded for now or handle error.
     
-    args.push(path);
+    args.push('--', path);
     try {
         const { stdout } = await execa('git', args);
     return processDiff(stdout);
@@ -77,7 +77,7 @@ export async function getRawDiff(path: string, staged: boolean, isUntracked: boo
     if (staged) {
         args.push('--cached');
     }
-    args.push(path);
+    args.push('--', path);
     try {
         const { stdout } = await execa('git', args);
         return stdout;

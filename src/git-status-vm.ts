@@ -1,4 +1,5 @@
-import { appendFile } from 'node:fs/promises';
+import { appendFile, readFile } from 'node:fs/promises';
+import { execa } from 'execa';
 import { DiffLine, FileDiff, generatePatch, Hunk, parseDiff } from './diff-parser.js';
 import type { CommitInfo, FileEntry } from './git.js';
 
@@ -198,18 +199,34 @@ export class GitStatusViewModel {
                     try {
                         const rawDiff = await this.git.getRawDiff(entry.path, entry.staged, entry.status === '?');
                         const parsed = parseDiff(rawDiff);
-                        return { key: entry.key, diff: parsed, loadFailed: false };
+                        return { key: entry.key, diff: parsed, loadFailed: false, entry };
                     } catch (e) {
                         // Return empty diff on error
-                        return { key: entry.key, diff: { headerLines: [], hunks: [] } as FileDiff, loadFailed: true };
+                        return { key: entry.key, diff: { headerLines: [], hunks: [] } as FileDiff, loadFailed: true, entry };
                     }
                 });
             
             const results = await Promise.all(promises);
             
             this.diffStats.clear();
-            for (const { key, diff, loadFailed } of results) {
-                this.diffStats.set(key, this.calculateDiffStat(diff));
+            for (const { key, diff, loadFailed, entry } of results) {
+                let stat = this.calculateDiffStat(diff);
+                if (entry.status === '?' && stat.added === 0 && stat.modified === 0 && stat.removed === 0) {
+                    try {
+                        const content = await readFile(entry.path, 'utf-8');
+                        const lineCount = content.split('\n').length - (content.endsWith('\n') ? 1 : 0);
+                        stat = { added: lineCount, modified: 0, removed: 0 };
+                    } catch {}
+                }
+                if (entry.status === 'D' && stat.added === 0 && stat.modified === 0 && stat.removed === 0) {
+                    try {
+                        const ref = entry.staged ? 'HEAD' : '';
+                        const { stdout } = await execa('git', ['show', `${ref}:${entry.path}`]);
+                        const lineCount = stdout.split('\n').length - (stdout.endsWith('\n') ? 1 : 0);
+                        stat = { added: 0, modified: 0, removed: lineCount };
+                    } catch {}
+                }
+                this.diffStats.set(key, stat);
                 if (this.expandedFiles.has(key) || loadFailed) {
                     this.diffCache.set(key, diff);
                 }
