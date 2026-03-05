@@ -213,7 +213,7 @@ export class GitStatusViewModel {
             this.branchName = branchName;
             this.lastCommit = lastCommit;
             
-            // Refresh diffs for expanded files
+            // Refresh diffs and keep cached entries in sync.
             const allEntries = [...this.staged, ...this.unstaged, ...this.untracked];
             const validKeys = new Set(allEntries.map(e => e.key));
             
@@ -221,6 +221,13 @@ export class GitStatusViewModel {
             for (const key of this.expandedFiles) {
                 if (!validKeys.has(key)) {
                     this.expandedFiles.delete(key);
+                    this.diffCache.delete(key);
+                }
+            }
+
+            // Clean up stale cached diffs for files no longer in status.
+            for (const key of this.diffCache.keys()) {
+                if (!validKeys.has(key)) {
                     this.diffCache.delete(key);
                 }
             }
@@ -257,7 +264,9 @@ export class GitStatusViewModel {
                     } catch {}
                 }
                 this.diffStats.set(key, stat);
-                if (this.expandedFiles.has(key) || loadFailed) {
+                // If a file already has cached diff content, refresh it even when collapsed.
+                // Otherwise expanding after a refresh can still render stale hunks.
+                if (this.expandedFiles.has(key) || this.diffCache.has(key) || loadFailed) {
                     this.diffCache.set(key, diff);
                 }
             }

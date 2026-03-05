@@ -17,8 +17,9 @@ class MockGitAdapter implements GitAdapter {
     async getStatus() { return this.statusResult; }
     async getBranchName() { return this.branchName; }
     async getLastCommit() { return this.lastCommit; }
-    async getRawDiff(path: string, staged: boolean) { 
-        return this.rawDiffs.get(path) || ""; 
+    async getRawDiff(path: string, staged: boolean) {
+        const stagedKey = `${staged ? "staged" : "unstaged"}:${path}`;
+        return this.rawDiffs.get(stagedKey) || this.rawDiffs.get(path) || "";
     }
 }
 
@@ -255,6 +256,62 @@ index 1..2 100644
         expect(vm.expandedFiles.has("unstaged:file1.ts")).toBe(true);
         
         expect(vm.items.length).toBeGreaterThan(2);
+    });
+
+    it("refresh updates cached unstaged diff when file exists in staged and unstaged", async () => {
+        const stagedEntry = { path: "file1.ts", status: "M", staged: true, key: "staged:file1.ts" };
+        const unstagedEntry = { path: "file1.ts", status: "M", staged: false, key: "unstaged:file1.ts" };
+        git.statusResult = { staged: [stagedEntry], unstaged: [unstagedEntry], untracked: [] };
+
+        const stagedDiff = `diff --git a/file1.ts b/file1.ts
+index 1..2 100644
+--- a/file1.ts
++++ b/file1.ts
+@@ -1,1 +1,1 @@
+-head
++staged-v1
+`;
+        const unstagedDiffV1 = `diff --git a/file1.ts b/file1.ts
+index 1..2 100644
+--- a/file1.ts
++++ b/file1.ts
+@@ -10,1 +10,1 @@
+-index
++unstaged-v1
+`;
+        const unstagedDiffV2 = `diff --git a/file1.ts b/file1.ts
+index 1..2 100644
+--- a/file1.ts
++++ b/file1.ts
+@@ -10,1 +10,1 @@
+-index
++unstaged-v2
+`;
+
+        git.rawDiffs.set("staged:file1.ts", stagedDiff);
+        git.rawDiffs.set("unstaged:file1.ts", unstagedDiffV1);
+
+        await vm.refresh();
+        await vm.toggleExpand(unstagedEntry);
+
+        const linesV1 = vm.items
+            .filter(item => item.type === "line" && item.entry?.key === "unstaged:file1.ts")
+            .map(item => item.line?.content);
+        expect(linesV1).toContain("+unstaged-v1");
+
+        // Collapse so expansion relies on cached content.
+        await vm.toggleExpand(unstagedEntry);
+
+        git.rawDiffs.set("unstaged:file1.ts", unstagedDiffV2);
+        await vm.refresh();
+
+        await vm.toggleExpand(unstagedEntry);
+        const linesV2 = vm.items
+            .filter(item => item.type === "line" && item.entry?.key === "unstaged:file1.ts")
+            .map(item => item.line?.content);
+
+        expect(linesV2).toContain("+unstaged-v2");
+        expect(linesV2).not.toContain("+unstaged-v1");
     });
 
     it("stages full file", async () => {
