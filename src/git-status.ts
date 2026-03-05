@@ -75,6 +75,9 @@ class GitStatusState extends State<GitStatusWidget> {
     private selectedItemKey = new GlobalKey();
     private pendingChord: string[] = [];
     private chordTimer: ReturnType<typeof setTimeout> | null = null;
+    private loadingInPreviousVmUpdate = false;
+    private pendingLoadingKeyEvents: KeyboardEvent[] = [];
+    private replayingPendingLoadingKeys = false;
 
     private getStatusColor(status: string) {
         if (status === 'M') return Colors.magenta;
@@ -91,8 +94,15 @@ class GitStatusState extends State<GitStatusWidget> {
         registerDefaultBindings();
         this.scrollController.followMode = false;
         this.vm = new GitStatusViewModel(realGitAdapter, () => {
+            const loadingJustFinished = this.loadingInPreviousVmUpdate && !this.vm.loading;
+            this.loadingInPreviousVmUpdate = this.vm.loading;
             this.setState(() => {});
+
+            if (loadingJustFinished) {
+                setTimeout(() => this.flushPendingLoadingKeys(), 0);
+            }
         });
+        this.loadingInPreviousVmUpdate = this.vm.loading;
         this.vm.refresh();
     }
 
@@ -175,7 +185,13 @@ class GitStatusState extends State<GitStatusWidget> {
         let rootTextSpan: TextSpan;
         let statusBarColor: any = undefined;
 
-        if (this.pendingChord.length > 0) {
+        if (this.vm.errorMessage) {
+            statusBarColor = Colors.rgb(180, 0, 0);
+            rootTextSpan = new TextSpan(
+                ` Error: ${this.vm.errorMessage}`,
+                new TextStyle({ color: Colors.white, bold: true })
+            );
+        } else if (this.pendingChord.length > 0) {
             const options = globalRegistry.getNextOptions(this.pendingChord);
             const waitingFor = options.map(o => `${o.key} (${o.binding.description})`).join(' ');
             const statusText = ` Key ${this.pendingChord.join(' ')} pressed, waiting for: ${waitingFor}`;
@@ -451,11 +467,22 @@ class GitStatusState extends State<GitStatusWidget> {
                  // Hunk mode logic
             }
 
+            const indicator = line.content.charAt(0); // +, -, or space
+            const rest = line.content.substring(1);
+            const gutterBg = isSelected && (this.vm.lineSelectionMode || !item.hunkIndex)
+                ? bg
+                : Colors.rgb(30, 30, 30);
             content = new RichText({
-                text: new TextSpan(
-                    ' ' + line.content, // Indent diff lines slightly
-                    new TextStyle({ color, backgroundColor: bg })
-                )
+                text: new TextSpan(undefined, undefined, [
+                    new TextSpan(
+                        ' ' + indicator,
+                        new TextStyle({ color, backgroundColor: gutterBg })
+                    ),
+                    new TextSpan(
+                        rest,
+                        new TextStyle({ color, backgroundColor: bg })
+                    ),
+                ])
             });
         } else {
             content = new SizedBox({});
@@ -468,6 +495,40 @@ class GitStatusState extends State<GitStatusWidget> {
              child: content
         });
         return row;
+    }
+
+    private bufferKeyForLoadingReplay(event: KeyboardEvent): void {
+        this.pendingLoadingKeyEvents.push({
+            type: 'key',
+            key: event.key,
+            shiftKey: event.shiftKey,
+            ctrlKey: event.ctrlKey,
+            altKey: event.altKey,
+            metaKey: event.metaKey
+        });
+    }
+
+    private flushPendingLoadingKeys(): void {
+        if (this.vm.loading || this.pendingLoadingKeyEvents.length === 0) {
+            return;
+        }
+
+        const eventsToReplay = this.pendingLoadingKeyEvents;
+        this.pendingLoadingKeyEvents = [];
+        this.replayingPendingLoadingKeys = true;
+
+        try {
+            for (let i = 0; i < eventsToReplay.length; i++) {
+                this.handleKey(eventsToReplay[i]);
+
+                if (this.vm.loading) {
+                    this.pendingLoadingKeyEvents.unshift(...eventsToReplay.slice(i + 1));
+                    break;
+                }
+            }
+        } finally {
+            this.replayingPendingLoadingKeys = false;
+        }
     }
 
     handleKey(event: KeyboardEvent): KeyEventResult {
@@ -496,6 +557,11 @@ class GitStatusState extends State<GitStatusWidget> {
                   return KeyEventResult.handled;
              }
              return KeyEventResult.handled;
+        }
+
+        if (this.vm.loading && !this.replayingPendingLoadingKeys) {
+            this.bufferKeyForLoadingReplay(event);
+            return KeyEventResult.handled;
         }
 
         // Reset timer if it exists

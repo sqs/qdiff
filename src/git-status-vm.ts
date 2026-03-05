@@ -56,8 +56,38 @@ export class GitStatusViewModel {
     public isFixupMode = false;
     public fixupSelectedIndex = 0;
     public showHelp = false;
+    public errorMessage: string | null = null;
+    private errorTimer: ReturnType<typeof setTimeout> | null = null;
 
     constructor(private git: GitAdapter, private onStateChange: () => void) {}
+
+    setError(e: unknown) {
+        let message = 'Unknown error';
+        if (e instanceof Error) {
+            // execa errors have `stderr` property with the git error message
+            const stderr = (e as any).stderr;
+            if (typeof stderr === 'string' && stderr.trim()) {
+                message = stderr.trim().split('\n')[0];
+            } else {
+                message = e.message;
+            }
+        }
+        this.errorMessage = message;
+        if (this.errorTimer) clearTimeout(this.errorTimer);
+        this.errorTimer = setTimeout(() => {
+            this.errorMessage = null;
+            this.notify();
+        }, 5000);
+        this.notify();
+    }
+
+    clearError() {
+        this.errorMessage = null;
+        if (this.errorTimer) {
+            clearTimeout(this.errorTimer);
+            this.errorTimer = null;
+        }
+    }
 
     private notify() {
         this.onStateChange();
@@ -329,7 +359,7 @@ export class GitStatusViewModel {
             }
             
         } catch (e) {
-            console.error(e);
+            this.setError(e);
         } finally {
             this.loading = false;
             this.updateItems();
@@ -543,7 +573,7 @@ export class GitStatusViewModel {
                 }
             }
         } catch (e) {
-            console.error(e);
+            this.setError(e);
         } finally {
              // Determine the next item to select after refresh.
             // We want to select the next item after the current selection range
@@ -651,7 +681,7 @@ export class GitStatusViewModel {
                 }
             }
         } catch (e) {
-            console.error(e);
+            this.setError(e);
         } finally {
             this.lineSelectionMode = false;
             this.selectionAnchor = -1;
@@ -709,7 +739,7 @@ export class GitStatusViewModel {
             await this.git.commit(all);
             await this.refresh();
         } catch (e) {
-            console.error(e);
+            this.setError(e);
         } finally {
             this.loading = false;
             this.notify();
@@ -722,7 +752,7 @@ export class GitStatusViewModel {
         try {
             this.recentCommits = await this.git.getRecentCommits(25);
         } catch (e) {
-            console.error(e);
+            this.setError(e);
         } finally {
             this.loading = false;
             this.notify();
@@ -736,7 +766,7 @@ export class GitStatusViewModel {
             await this.git.fixupCommit(sha);
             await this.refresh();
         } catch (e) {
-            console.error(e);
+            this.setError(e);
         } finally {
             this.loading = false;
             this.notify();
