@@ -1,6 +1,11 @@
 import { GitAdapter, GitStatusViewModel, VisibleItem } from './git-status-vm.js';
 import * as git from './git.js';
-import { KeyBinding, globalRegistry, registerDefaultBindings } from './key-bindings.js';
+import {
+    KeyBinding,
+    KeyBindingHelpers,
+    globalRegistry,
+    registerDefaultBindings
+} from './key-bindings.js';
 import {
     Border,
     BorderSide,
@@ -15,7 +20,6 @@ import {
     FocusNode,
     GlobalKey,
     KeyEventResult,
-    MouseRegion,
     RenderBox,
     RichText,
     ScrollController,
@@ -71,6 +75,17 @@ class GitStatusState extends State<GitStatusWidget> {
     private selectedItemKey = new GlobalKey();
     private pendingChord: string[] = [];
     private chordTimer: ReturnType<typeof setTimeout> | null = null;
+
+    private getStatusColor(status: string) {
+        if (status === 'M') return Colors.magenta;
+        if (status === 'D') return Colors.red;
+        if (status === 'A') return Colors.green;
+        return Colors.rgb(130, 130, 130);
+    }
+
+    private formatDiffStatText(diffStat: { added: number; modified: number; removed: number }): string {
+        return `+${diffStat.added}/~${diffStat.modified}/-${diffStat.removed}`;
+    }
 
     initState() {
         registerDefaultBindings();
@@ -128,6 +143,7 @@ class GitStatusState extends State<GitStatusWidget> {
             onKey: (event) => this.handleKey(event),
             child: new Scrollbar({
                 controller: this.scrollController,
+                interactive: false,
                 // @ts-ignore
                 getScrollInfo: () => {
                     try {
@@ -147,6 +163,7 @@ class GitStatusState extends State<GitStatusWidget> {
                 child: new SingleChildScrollView({
                     controller: this.scrollController,
                     autofocus: false,
+                    enableMouseScroll: false,
                     child: new Column({
                         children: widgetItems,
                         crossAxisAlignment: CrossAxisAlignment.stretch
@@ -260,6 +277,7 @@ class GitStatusState extends State<GitStatusWidget> {
                 return KeyEventResult.ignored;
             },
             child: new SingleChildScrollView({
+                enableMouseScroll: false,
                 child: new Column({
                     children: items,
                     crossAxisAlignment: CrossAxisAlignment.stretch
@@ -309,6 +327,7 @@ class GitStatusState extends State<GitStatusWidget> {
             autofocus: true,
             onKey: (event) => this.handleKey(event),
             child: new SingleChildScrollView({
+                enableMouseScroll: false,
                 child: new Column({
                     children: items,
                     crossAxisAlignment: CrossAxisAlignment.stretch
@@ -371,14 +390,38 @@ class GitStatusState extends State<GitStatusWidget> {
             });
         } else if (item.type === 'file') {
              const entry = item.entry!;
+             const diffStat = this.vm.diffStats.get(entry.key) || { added: 0, modified: 0, removed: 0 };
+             const diffStatText = this.formatDiffStatText(diffStat);
+             const diffStatPadding = ' '.repeat(Math.max(0, this.vm.diffStatWidth - diffStatText.length));
+             const textColor = isSelected ? Colors.black : Colors.rgb(200, 200, 200);
+             const children: TextSpan[] = [
+                 new TextSpan('  ', new TextStyle({ color: textColor, backgroundColor: isSelected ? Colors.white : undefined })),
+                 new TextSpan(entry.status, new TextStyle({
+                     color: isSelected ? Colors.black : this.getStatusColor(entry.status),
+                     backgroundColor: isSelected ? Colors.white : undefined
+                 })),
+                 new TextSpan(' ', new TextStyle({ color: textColor, backgroundColor: isSelected ? Colors.white : undefined })),
+                 new TextSpan(`+${diffStat.added}`, new TextStyle({
+                     color: isSelected ? Colors.black : Colors.green,
+                     backgroundColor: isSelected ? Colors.white : undefined
+                 })),
+                 new TextSpan('/', new TextStyle({ color: textColor, backgroundColor: isSelected ? Colors.white : undefined })),
+                 new TextSpan(`~${diffStat.modified}`, new TextStyle({
+                     color: isSelected ? Colors.black : Colors.yellow,
+                     backgroundColor: isSelected ? Colors.white : undefined
+                 })),
+                 new TextSpan('/', new TextStyle({ color: textColor, backgroundColor: isSelected ? Colors.white : undefined })),
+                 new TextSpan(`-${diffStat.removed}`, new TextStyle({
+                     color: isSelected ? Colors.black : Colors.red,
+                     backgroundColor: isSelected ? Colors.white : undefined
+                 })),
+                 new TextSpan(`${diffStatPadding} ${entry.path}`, new TextStyle({
+                     color: textColor,
+                     backgroundColor: isSelected ? Colors.white : undefined
+                 }))
+             ];
              content = new RichText({
-                 text: new TextSpan(
-                     `  ${entry.status} ${entry.path}`,
-                     new TextStyle({
-                         color: isSelected ? Colors.black : Colors.rgb(200, 200, 200),
-                         backgroundColor: isSelected ? Colors.white : undefined
-                     })
-                 )
+                 text: new TextSpan(undefined, undefined, children)
              });
         } else if (item.type === 'hunk') {
             content = new RichText({
@@ -420,20 +463,10 @@ class GitStatusState extends State<GitStatusWidget> {
 
         // @ts-ignore
         const row = new Container({
-             key: (item.type === 'file' || !isFocused) ? undefined : this.selectedItemKey,
+             key: isFocused ? this.selectedItemKey : undefined,
              // @ts-ignore
              child: content
         });
-        
-        if (item.type === 'file') {
-             return new MouseRegion({
-                key: isFocused ? this.selectedItemKey : undefined,
-                cursor: 'pointer',
-                onClick: () => this.vm.toggleExpand(item.entry),
-                child: row
-            });
-        }
-        
         return row;
     }
 
@@ -471,12 +504,20 @@ class GitStatusState extends State<GitStatusWidget> {
             this.chordTimer = null;
         }
 
-        const nextChord = [...this.pendingChord, event.key];
+        const nextChord = [...this.pendingChord, this.getBindingKey(event)];
         
         // 1. Check for exact match
         const match = globalRegistry.findMatch(nextChord);
         if (match) {
-            match.action(this.vm, { quit: () => process.exit(0) });
+            const helpers: KeyBindingHelpers = {
+                quit: () => process.exit(0),
+                scrollPageUp: () => this.scrollPageUpAndMoveSelection(),
+                scrollPageDown: () => this.scrollPageDownAndMoveSelection(),
+                scrollToTop: () => this.scrollToTopAndMoveSelection(),
+                scrollToBottom: () => this.scrollToBottomAndMoveSelection()
+            };
+
+            match.action(this.vm, helpers);
             this.pendingChord = [];
             if (match.category === 'Navigation') {
                 this.scrollToSelected();
@@ -504,6 +545,63 @@ class GitStatusState extends State<GitStatusWidget> {
         }
 
         return KeyEventResult.ignored;
+    }
+
+    private getBindingKey(event: KeyboardEvent): string {
+        if (event.metaKey) {
+            if (event.key === '<' || (event.key === ',' && event.shiftKey)) {
+                return 'Cmd+Shift+<';
+            }
+
+            if (event.key === '>' || (event.key === '.' && event.shiftKey)) {
+                return 'Cmd+Shift+>';
+            }
+        }
+
+        return event.key;
+    }
+
+    private getPageSize(): number {
+        const viewportHeight = Math.floor(this.scrollController.viewportDimension);
+        return viewportHeight > 0 ? viewportHeight : 10;
+    }
+
+    private scrollPageUp(): void {
+        this.scrollController.scrollPageUp(this.getPageSize());
+    }
+
+    private scrollPageDown(): void {
+        this.scrollController.scrollPageDown(this.getPageSize());
+    }
+
+    private scrollPageUpAndMoveSelection(): void {
+        const pageSize = this.getPageSize();
+        this.scrollController.scrollPageUp(pageSize);
+        this.vm.moveSelectionBy(-pageSize);
+    }
+
+    private scrollPageDownAndMoveSelection(): void {
+        const pageSize = this.getPageSize();
+        this.scrollController.scrollPageDown(pageSize);
+        this.vm.moveSelectionBy(pageSize);
+    }
+
+    private scrollToTop(): void {
+        this.scrollController.jumpTo(0);
+    }
+
+    private scrollToBottom(): void {
+        this.scrollController.jumpTo(this.scrollController.maxScrollExtent);
+    }
+
+    private scrollToTopAndMoveSelection(): void {
+        this.scrollController.jumpTo(0);
+        this.vm.moveSelectionToTop();
+    }
+
+    private scrollToBottomAndMoveSelection(): void {
+        this.scrollController.jumpTo(this.scrollController.maxScrollExtent);
+        this.vm.moveSelectionToBottom();
     }
 }
 

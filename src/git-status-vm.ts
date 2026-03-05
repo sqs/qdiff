@@ -2,6 +2,12 @@ import { appendFile } from 'node:fs/promises';
 import { DiffLine, FileDiff, generatePatch, Hunk, parseDiff } from './diff-parser.js';
 import type { CommitInfo, FileEntry } from './git.js';
 
+export interface DiffStat {
+    added: number;
+    modified: number;
+    removed: number;
+}
+
 export interface GitAdapter {
     getStatus(): Promise<{ staged: FileEntry[], unstaged: FileEntry[], untracked: FileEntry[] }>;
     getBranchName(): Promise<string>;
@@ -38,6 +44,8 @@ export class GitStatusViewModel {
     public selectedIndex = 0;
     public expandedFiles = new Set<string>(); 
     public diffCache = new Map<string, FileDiff>();
+    public diffStats = new Map<string, DiffStat>();
+    public diffStatWidth = 0;
     public loading = false;
     
     public lineSelectionMode = false;
@@ -118,6 +126,29 @@ export class GitStatusViewModel {
         }
     }
 
+    private calculateDiffStat(diff: FileDiff): DiffStat {
+        let additions = 0;
+        let removals = 0;
+
+        for (const hunk of diff.hunks) {
+            for (const line of hunk.lines) {
+                if (line.type === 'add') additions++;
+                if (line.type === 'remove') removals++;
+            }
+        }
+
+        const modified = Math.min(additions, removals);
+        return {
+            added: additions - modified,
+            modified,
+            removed: removals - modified,
+        };
+    }
+
+    private formatDiffStat(diffStat: DiffStat): string {
+        return `+${diffStat.added}/~${diffStat.modified}/-${diffStat.removed}`;
+    }
+
     async refresh() {
         // Save current selection ID to restore later
         let selectedId: string | undefined;
@@ -163,23 +194,36 @@ export class GitStatusViewModel {
                 }
             }
 
-            const promises = allEntries
-                .filter(entry => this.expandedFiles.has(entry.key))
-                .map(async entry => {
+            const promises = allEntries.map(async entry => {
                     try {
                         const rawDiff = await this.git.getRawDiff(entry.path, entry.staged, entry.status === '?');
                         const parsed = parseDiff(rawDiff);
-                        return { key: entry.key, diff: parsed };
+                        return { key: entry.key, diff: parsed, loadFailed: false };
                     } catch (e) {
-                         // Return empty diff on error
-                        return { key: entry.key, diff: { headerLines: [], hunks: [] } as FileDiff };
+                        // Return empty diff on error
+                        return { key: entry.key, diff: { headerLines: [], hunks: [] } as FileDiff, loadFailed: true };
                     }
                 });
             
             const results = await Promise.all(promises);
             
-            for (const { key, diff } of results) {
-                this.diffCache.set(key, diff);
+            this.diffStats.clear();
+            for (const { key, diff, loadFailed } of results) {
+                this.diffStats.set(key, this.calculateDiffStat(diff));
+                if (this.expandedFiles.has(key) || loadFailed) {
+                    this.diffCache.set(key, diff);
+                }
+            }
+
+            this.diffStatWidth = 0;
+            for (const entry of allEntries) {
+                const diffStat = this.diffStats.get(entry.key);
+                if (!diffStat) continue;
+
+                const textLength = this.formatDiffStat(diffStat).length;
+                if (textLength > this.diffStatWidth) {
+                    this.diffStatWidth = textLength;
+                }
             }
             
             this.updateItems();
@@ -304,6 +348,77 @@ export class GitStatusViewModel {
                 this.notify();
             }
         }
+    }
+
+    moveSelectionBy(delta: number) {
+        if (delta === 0 || this.items.length === 0) return;
+
+        const direction = delta > 0 ? 1 : -1;
+        let remaining = Math.abs(delta);
+        let candidateIndex = this.selectedIndex;
+        let lastValidIndex = this.selectedIndex;
+
+        while (remaining > 0) {
+            candidateIndex += direction;
+
+            while (
+                candidateIndex >= 0 &&
+                candidateIndex < this.items.length &&
+                !this.items[candidateIndex].selectable
+            ) {
+                candidateIndex += direction;
+            }
+
+            if (candidateIndex < 0 || candidateIndex >= this.items.length) {
+                break;
+            }
+
+            lastValidIndex = candidateIndex;
+            remaining--;
+        }
+
+        if (lastValidIndex === this.selectedIndex) {
+            return;
+        }
+
+        this.selectedIndex = lastValidIndex;
+        if (!this.lineSelectionMode) {
+            this.selectionAnchor = lastValidIndex;
+        }
+        this.notify();
+    }
+
+    moveSelectionToTop() {
+        const topSelectableIndex = this.items.findIndex((item) => item.selectable);
+        if (topSelectableIndex === -1 || topSelectableIndex === this.selectedIndex) {
+            return;
+        }
+
+        this.selectedIndex = topSelectableIndex;
+        if (!this.lineSelectionMode) {
+            this.selectionAnchor = topSelectableIndex;
+        }
+        this.notify();
+    }
+
+    moveSelectionToBottom() {
+        let bottomSelectableIndex = -1;
+        for (let i = this.items.length - 1; i >= 0; i--) {
+            if (this.items[i].selectable) {
+                bottomSelectableIndex = i;
+                break;
+            }
+        }
+
+        if (bottomSelectableIndex === -1 || bottomSelectableIndex === this.selectedIndex) {
+            return;
+        }
+
+        this.selectedIndex = bottomSelectableIndex;
+        if (!this.lineSelectionMode) {
+            this.selectionAnchor = bottomSelectableIndex;
+        }
+        this.notify();
     }
 
     toggleLineSelectionMode() {

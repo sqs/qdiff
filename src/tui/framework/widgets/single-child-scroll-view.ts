@@ -21,6 +21,7 @@ export class SingleChildScrollView extends StatelessWidget {
 	readonly controller?: ScrollController
 	readonly scrollDirection: Axis
 	readonly autofocus: boolean
+	readonly enableMouseScroll: boolean
 	readonly position: 'top' | 'bottom'
 
 	constructor({
@@ -29,6 +30,7 @@ export class SingleChildScrollView extends StatelessWidget {
 		controller,
 		scrollDirection = Axis.vertical,
 		autofocus = true,
+		enableMouseScroll = true,
 		position = 'top',
 	}: {
 		key?: Key
@@ -36,6 +38,7 @@ export class SingleChildScrollView extends StatelessWidget {
 		controller?: ScrollController
 		scrollDirection?: Axis
 		autofocus?: boolean
+		enableMouseScroll?: boolean
 		position?: 'top' | 'bottom'
 	}) {
 		super(key ? { key } : {})
@@ -43,6 +46,7 @@ export class SingleChildScrollView extends StatelessWidget {
 		this.controller = controller
 		this.scrollDirection = scrollDirection
 		this.autofocus = autofocus
+		this.enableMouseScroll = enableMouseScroll
 		this.position = position
 	}
 
@@ -51,6 +55,7 @@ export class SingleChildScrollView extends StatelessWidget {
 			controller: this.controller,
 			axisDirection: this.scrollDirection,
 			autofocus: this.autofocus,
+			enableMouseScroll: this.enableMouseScroll,
 			viewportBuilder: (
 				context: BuildContext,
 				offset: number,

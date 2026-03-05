@@ -181,6 +181,9 @@ export class Tui {
 	// JetBrains wheel filter instance
 	private jetBrainsWheelFilter: JetBrainsWheelFilter
 
+	// Mouse input is disabled for qdiff.
+	private readonly mouseInputEnabled = false
+
 	// Event handlers
 	private keyHandlers: EventHandler<KeyboardEvent>[] = []
 	private mouseHandlers: EventHandler<MouseEvent>[] = []
@@ -342,8 +345,11 @@ export class Tui {
 
 			this.initialized = true
 
-			// Enable mouse and bracketed paste immediately
-			this.enableMouse()
+			// Enable bracketed paste immediately.
+			// Mouse reporting stays disabled to keep qdiff keyboard-only.
+			if (this.mouseInputEnabled) {
+				this.enableMouse()
+			}
 			this.enableBracketedPaste()
 
 			// Create capability promise before starting detection
@@ -839,7 +845,9 @@ export class Tui {
 		this.hideCursor()
 
 		// Re-enable terminal features
-		this.enableMouse()
+		if (this.mouseInputEnabled) {
+			this.enableMouse()
+		}
 		this.enableBracketedPaste()
 
 		// Re-enable optional features if they were supported
@@ -1198,7 +1206,11 @@ export class Tui {
 			const isPixelMouseAvailable = this.queryParser.shouldUsePixelMouse()
 
 			// If pixel mouse just became available, re-enable mouse with pixel mode
-			if (!wasPixelMouseAvailable && isPixelMouseAvailable) {
+			if (
+				this.mouseInputEnabled &&
+				!wasPixelMouseAvailable &&
+				isPixelMouseAvailable
+			) {
 				this.disableMouse()
 				this.enableMouse()
 			}

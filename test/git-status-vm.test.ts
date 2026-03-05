@@ -88,6 +88,53 @@ describe("GitStatusViewModel", () => {
         expect(vm.selectedIndex).toBe(2);
     });
 
+    it("moves selection by page-sized deltas", async () => {
+        git.statusResult = {
+            staged: [
+                { path: "file3.ts", status: "M", staged: true, key: "staged:file3.ts" },
+                { path: "file4.ts", status: "M", staged: true, key: "staged:file4.ts" }
+            ],
+            unstaged: [
+                { path: "file1.ts", status: "M", staged: false, key: "unstaged:file1.ts" },
+                { path: "file2.ts", status: "M", staged: false, key: "unstaged:file2.ts" }
+            ],
+            untracked: []
+        };
+        await vm.refresh();
+
+        // Order: Unstaged Hdr(0), File1(1), File2(2), Staged Hdr(3), File3(4), File4(5)
+        vm.moveSelectionBy(2);
+        expect(vm.selectedIndex).toBe(2);
+
+        vm.moveSelectionBy(100);
+        expect(vm.selectedIndex).toBe(5);
+
+        vm.moveSelectionBy(-3);
+        expect(vm.selectedIndex).toBe(2);
+
+        vm.moveSelectionBy(-100);
+        expect(vm.selectedIndex).toBe(0);
+    });
+
+    it("jumps selection to top and bottom", async () => {
+        git.statusResult = {
+            staged: [
+                { path: "file3.ts", status: "M", staged: true, key: "staged:file3.ts" }
+            ],
+            unstaged: [
+                { path: "file1.ts", status: "M", staged: false, key: "unstaged:file1.ts" }
+            ],
+            untracked: []
+        };
+        await vm.refresh();
+
+        vm.moveSelectionToBottom();
+        expect(vm.selectedIndex).toBe(vm.items.length - 1);
+
+        vm.moveSelectionToTop();
+        expect(vm.selectedIndex).toBe(0);
+    });
+
     it("persists selection across refreshes", async () => {
         git.statusResult = {
             staged: [{ path: "file1.ts", status: "M", staged: true, key: "staged:file1.ts" }],

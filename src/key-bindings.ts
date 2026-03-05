@@ -1,9 +1,17 @@
 import { GitStatusViewModel } from './git-status-vm.js';
 
+export interface KeyBindingHelpers {
+    quit: () => void;
+    scrollPageUp: () => void;
+    scrollPageDown: () => void;
+    scrollToTop: () => void;
+    scrollToBottom: () => void;
+}
+
 export interface KeyBinding {
     keys: string[]; // sequence of keys, e.g. ['c', 'c']
     description: string;
-    action: (vm: GitStatusViewModel, helpers: { quit: () => void }) => void | Promise<void>;
+    action: (vm: GitStatusViewModel, helpers: KeyBindingHelpers) => void | Promise<void>;
     label: string; // Display string for the keys
     category: string;
 }
@@ -152,7 +160,39 @@ export function registerDefaultBindings() {
         action: (vm) => vm.moveSelection(-1)
     });
     
-     globalRegistry.register({
+    globalRegistry.register({
+        keys: ['PageUp'],
+        label: 'PgUp',
+        description: 'Scroll up',
+        category: 'Scrolling',
+        action: (_, helpers) => helpers.scrollPageUp()
+    });
+
+    globalRegistry.register({
+        keys: ['PageDown'],
+        label: 'PgDn',
+        description: 'Scroll down',
+        category: 'Scrolling',
+        action: (_, helpers) => helpers.scrollPageDown()
+    });
+
+    globalRegistry.register({
+        keys: ['Cmd+Shift+<'],
+        label: 'Cmd+Shift+<',
+        description: 'Jump to top',
+        category: 'Scrolling',
+        action: (_, helpers) => helpers.scrollToTop()
+    });
+
+    globalRegistry.register({
+        keys: ['Cmd+Shift+>'],
+        label: 'Cmd+Shift+>',
+        description: 'Jump to bottom',
+        category: 'Scrolling',
+        action: (_, helpers) => helpers.scrollToBottom()
+    });
+
+    globalRegistry.register({
         keys: [' '],
         label: 'Space',
         description: 'Toggle line selection mode',

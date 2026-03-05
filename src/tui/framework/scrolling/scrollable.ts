@@ -37,6 +37,7 @@ export class Scrollable extends StatefulWidget {
 	readonly axisDirection: Axis
 	readonly controller: ScrollController | undefined
 	readonly physics: ScrollPhysics | undefined
+	readonly enableMouseScroll: boolean
 	readonly viewportBuilder: (
 		context: BuildContext,
 		offset: number,
@@ -52,6 +53,7 @@ export class Scrollable extends StatefulWidget {
 		physics,
 		viewportBuilder,
 		autofocus = false,
+		enableMouseScroll = true,
 	}: {
 		key?: Key
 		axisDirection?: Axis
@@ -64,6 +66,7 @@ export class Scrollable extends StatefulWidget {
 			controller?: ScrollController,
 		) => Widget
 		autofocus?: boolean
+		enableMouseScroll?: boolean
 	}) {
 		super(key ? { key } : {})
 		this.axisDirection = axisDirection
@@ -71,6 +74,7 @@ export class Scrollable extends StatefulWidget {
 		this.physics = physics
 		this.viewportBuilder = viewportBuilder
 		this.autofocus = autofocus
+		this.enableMouseScroll = enableMouseScroll
 	}
 
 	createState(): State<this> {
@@ -146,16 +150,20 @@ export class ScrollableState extends State<Scrollable> {
 			})
 		}
 
-		// Wrap viewport with MouseRegion for scroll events and Focus for keyboard events
+		const focusChild = this.widget.enableMouseScroll
+			? new MouseRegion({
+					onScroll: this._boundHandleMouseScrollEvent,
+					opaque: false, // Allow events to pass through to other handlers
+					child: viewport,
+			})
+			: viewport
+
+		// Wrap viewport with Focus for keyboard events.
 		return new Focus({
 			onKey: this._boundHandleKeyEvent,
 			autofocus: this.widget.autofocus,
 			debugLabel: 'Scrollable',
-			child: new MouseRegion({
-				onScroll: this._boundHandleMouseScrollEvent,
-				opaque: false, // Allow events to pass through to other handlers
-				child: viewport,
-			}),
+			child: focusChild,
 		})
 	}
 

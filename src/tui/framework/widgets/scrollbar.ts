@@ -42,6 +42,7 @@ export class Scrollbar extends StatefulWidget {
 	readonly trackChar: string
 	readonly thumbChar: string
 	readonly showTrack: boolean
+	readonly interactive: boolean
 	readonly thumbColor: Color
 	readonly trackColor: Color
 
@@ -54,6 +55,7 @@ export class Scrollbar extends StatefulWidget {
 		trackChar = '█',
 		thumbChar = '█',
 		showTrack = true,
+		interactive = true,
 		thumbColor,
 		trackColor,
 	}: {
@@ -65,6 +67,7 @@ export class Scrollbar extends StatefulWidget {
 		trackChar?: string
 		thumbChar?: string
 		showTrack?: boolean
+		interactive?: boolean
 		thumbColor: Color
 		trackColor: Color
 	}) {
@@ -76,6 +79,7 @@ export class Scrollbar extends StatefulWidget {
 		this.trackChar = trackChar
 		this.thumbChar = thumbChar
 		this.showTrack = showTrack
+		this.interactive = interactive
 		this.thumbColor = thumbColor
 		this.trackColor = trackColor
 	}
@@ -220,24 +224,30 @@ class ScrollbarState extends State<Scrollbar> {
 	}
 
 	build(context: BuildContext) {
+		const visual = new ScrollbarVisual({
+			child: this.widget.child,
+			controller: this.widget.controller,
+			getScrollInfo: this.widget.getScrollInfo,
+			thickness: this.widget.thickness,
+			trackChar: this.widget.trackChar,
+			thumbChar: this.widget.thumbChar,
+			showTrack: this.widget.showTrack,
+			thumbColor: this.widget.thumbColor,
+			trackColor: this.widget.trackColor,
+		})
+
+		if (!this.widget.interactive) {
+			return visual
+		}
+
 		return new MouseRegion({
 			onClick: this._handleClick,
 			onHover: this._handleHover,
 			onDrag: this._handleDrag,
 			onRelease: this._handleRelease,
-            opaque: false, // Allow clicks to pass through to content if not handled
+			opaque: false, // Allow clicks to pass through to content if not handled
 			cursor: this._isOverThumb ? MouseCursor.POINTER : MouseCursor.DEFAULT,
-			child: new ScrollbarVisual({
-				child: this.widget.child,
-				controller: this.widget.controller,
-				getScrollInfo: this.widget.getScrollInfo,
-				thickness: this.widget.thickness,
-				trackChar: this.widget.trackChar,
-				thumbChar: this.widget.thumbChar,
-				showTrack: this.widget.showTrack,
-				thumbColor: this.widget.thumbColor,
-				trackColor: this.widget.trackColor,
-			}),
+			child: visual,
 		})
 	}
 }
