@@ -343,6 +343,7 @@ class GitStatusState extends State<GitStatusWidget> {
             autofocus: true,
             onKey: (event) => this.handleKey(event),
             child: new SingleChildScrollView({
+                autofocus: false,
                 enableMouseScroll: false,
                 child: new Column({
                     children: items,
