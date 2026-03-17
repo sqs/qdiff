@@ -11,13 +11,14 @@ class MockGitAdapter implements GitAdapter {
     // Spies
     stageFile = mock(async (path: string) => {});
     unstageFile = mock(async (path: string) => {});
-    applyPatch = mock(async (patch: string, reverse: boolean) => {});
+    discardFile = mock(async (path: string, isUntracked?: boolean) => {});
+    applyPatch = mock(async (patch: string, reverse: boolean, index: boolean) => {});
     commit = mock(async (all: boolean) => {});
 
     async getStatus() { return this.statusResult; }
     async getBranchName() { return this.branchName; }
     async getLastCommit() { return this.lastCommit; }
-    async getRawDiff(path: string, staged: boolean) {
+    async getRawDiff(path: string, staged: boolean, isUntracked?: boolean) {
         const stagedKey = `${staged ? "staged" : "unstaged"}:${path}`;
         return this.rawDiffs.get(stagedKey) || this.rawDiffs.get(path) || "";
     }
@@ -312,6 +313,54 @@ index 1..2 100644
 
         expect(linesV2).toContain("+unstaged-v2");
         expect(linesV2).not.toContain("+unstaged-v1");
+    });
+
+    it("discards selected line ranges using a forward patch", async () => {
+        const fileEntry = { path: "file1.ts", status: "M", staged: false, key: "unstaged:file1.ts" };
+        git.statusResult = { staged: [], unstaged: [fileEntry], untracked: [] };
+
+        const diff = `diff --git a/file1.ts b/file1.ts
+index 1..2 100644
+--- a/file1.ts
++++ b/file1.ts
+@@ -1,1 +1,1 @@
+-old
++new
+`;
+        git.rawDiffs.set("file1.ts", diff);
+
+        await vm.refresh();
+        await vm.toggleExpand(fileEntry);
+
+        const addedLineIndex = vm.items.findIndex(item =>
+            item.type === "line" && item.entry?.key === fileEntry.key && item.line?.content === "+new"
+        );
+        expect(addedLineIndex).toBeGreaterThan(-1);
+
+        vm.selectedIndex = addedLineIndex;
+        vm.toggleLineSelectionMode();
+
+        await vm.discardSelection();
+
+        expect(git.applyPatch).toHaveBeenCalledTimes(1);
+        const [patch, reverse, index] = git.applyPatch.mock.calls[0]!;
+        expect(reverse).toBe(false);
+        expect(index).toBe(false);
+        expect(patch).toContain("@@ -1,1 +1,0 @@");
+        expect(patch).toContain("-new");
+    });
+
+    it("discards an untracked file via the untracked delete path", async () => {
+        const untrackedEntry = { path: "new-file.ts", status: "?", staged: false, key: "untracked:new-file.ts" };
+        git.statusResult = { staged: [], unstaged: [], untracked: [untrackedEntry] };
+        await vm.refresh();
+
+        // Order: Untracked Hdr(0), File(1)
+        vm.selectedIndex = 1;
+
+        await vm.discardSelection();
+
+        expect(git.discardFile).toHaveBeenCalledWith("new-file.ts", true);
     });
 
     it("stages full file", async () => {

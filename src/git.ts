@@ -100,14 +100,13 @@ export async function applyPatch(patch: string, reverse: boolean = false, index:
     await child;
 }
 
-export async function discardFile(path: string) {
-    try {
-        await execa('git', ['restore', path]);
-    } catch (e) {
-        // If restore fails, it might be an untracked file or new file.
-        // For now we won't auto-delete untracked files to be safe unless we're sure.
-        throw e;
+export async function discardFile(path: string, isUntracked: boolean = false) {
+    if (isUntracked) {
+        await execa('git', ['clean', '-fd', '--', path]);
+        return;
     }
+
+    await execa('git', ['restore', '--', path]);
 }
 
 export async function getBranchName(): Promise<string> {

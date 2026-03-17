@@ -1,6 +1,6 @@
 import { appendFile, readFile } from 'node:fs/promises';
 import { execa } from 'execa';
-import { DiffLine, FileDiff, generatePatch, Hunk, parseDiff } from './diff-parser.js';
+import { DiffLine, FileDiff, generatePatch, Hunk, invertDiff, parseDiff } from './diff-parser.js';
 import type { CommitInfo, FileEntry } from './git.js';
 
 export interface DiffStat {
@@ -17,7 +17,7 @@ export interface GitAdapter {
     getRawDiff(path: string, staged: boolean, isUntracked?: boolean): Promise<string>;
     stageFile(path: string): Promise<void>;
     unstageFile(path: string): Promise<void>;
-    discardFile(path: string): Promise<void>;
+    discardFile(path: string, isUntracked?: boolean): Promise<void>;
     applyPatch(patch: string, reverse: boolean, index: boolean): Promise<void>;
     commit(all: boolean): Promise<void>;
     fixupCommit(sha: string): Promise<void>;
@@ -571,13 +571,18 @@ export class GitStatusViewModel {
                 }
                 
                 if (data.fullFile) {
-                    await this.git.discardFile(data.entry.path);
+                    await this.git.discardFile(data.entry.path, data.entry.status === '?');
                 } else {
                     const diff = this.diffCache.get(key);
                     if (diff) {
-                        const patch = generatePatch(diff, data.hunks, data.lines);
-                        // reverse=true to revert, index=false to apply to working directory
-                        await this.git.applyPatch(patch, true, false); 
+                        // For line-range selection in tracked files, generate a forward patch
+                        // against the working tree. Reverse-applying an index-oriented patch can
+                        // fail on replacement hunks (e.g. selecting only the "+" line).
+                        const useForwardDiscardPatch = data.lines.size > 0 && data.entry.status !== '?';
+                        const discardDiff = useForwardDiscardPatch ? invertDiff(diff) : diff;
+                        const patch = generatePatch(discardDiff, data.hunks, data.lines);
+                        const reverse = !useForwardDiscardPatch;
+                        await this.git.applyPatch(patch, reverse, false);
                     }
                 }
             }

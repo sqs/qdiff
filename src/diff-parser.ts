@@ -79,6 +79,40 @@ export function parseDiff(diff: string): FileDiff {
     return { headerLines, hunks };
 }
 
+export function invertDiff(diff: FileDiff): FileDiff {
+    return {
+        // Keep file headers unchanged. For discard we only invert tracked-file hunks,
+        // and preserving headers avoids malformed ---/+++ ordering.
+        headerLines: [...diff.headerLines],
+        hunks: diff.hunks.map(hunk => ({
+            header: `@@ -${hunk.newStart},${hunk.newLines} +${hunk.oldStart},${hunk.oldLines} @@`,
+            lines: hunk.lines.map(line => {
+                if (line.type === 'add') {
+                    return {
+                        ...line,
+                        type: 'remove' as const,
+                        content: '-' + line.content.substring(1)
+                    };
+                }
+
+                if (line.type === 'remove') {
+                    return {
+                        ...line,
+                        type: 'add' as const,
+                        content: '+' + line.content.substring(1)
+                    };
+                }
+
+                return { ...line };
+            }),
+            oldStart: hunk.newStart,
+            oldLines: hunk.newLines,
+            newStart: hunk.oldStart,
+            newLines: hunk.oldLines,
+        }))
+    };
+}
+
 export function generatePatch(diff: FileDiff, selectedHunks: Set<number>, selectedLines: Set<string>): string {
     // selectedHunks: Set of indices of hunks that are FULLY selected
     // selectedLines: Set of "hunkIndex:lineIndex" strings for partially selected hunks
