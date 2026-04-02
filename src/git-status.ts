@@ -48,7 +48,7 @@ const realGitAdapter: GitAdapter = {
     applyPatch: git.applyPatch,
     commit: async (all: boolean) => {
         const tui = WidgetsBinding.instance.tuiInstance;
-        tui.suspend();
+        await tui.suspendForSubprocess();
         try {
             await git.commit(all);
         } finally {

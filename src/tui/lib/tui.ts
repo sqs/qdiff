@@ -36,6 +36,9 @@ const JETBRAINS_WHEEL_BUFFER_WINDOW_MS = 50
 /** JetBrains terminals wheel filter timeout in milliseconds */
 const JETBRAINS_WHEEL_FILTER_TIMEOUT_MS = 200
 
+/** Allow trailing terminal input to settle before handing stdin to a child process */
+const SUBPROCESS_INPUT_SETTLE_MS = 25
+
 /**
  * JetBrains terminal wheel event burst filter
  * Buffers initial events to determine direction, then filters subsequent events
@@ -771,13 +774,7 @@ export class Tui {
 		}
 	}
 
-	/** Suspend TUI - exit alt screen and reset all terminal state */
-	suspend(): void {
-		if (!this.initialized || this.suspended) {
-			return
-		}
-
-		// Reset styles, disable features, show cursor before exiting
+	private buildSuspendOutput(): string {
 		let output = ''
 		output +=
 			this.renderer.reset() +
@@ -789,7 +786,6 @@ export class Tui {
 			this.renderer.setCursorShape(0) +
 			this.renderer.showCursor()
 
-		// Disable color palette notifications if enabled
 		if (this.capabilities?.colorPaletteNotifications) {
 			output += '\x1b[?2031l'
 		}
@@ -798,14 +794,15 @@ export class Tui {
 			output += this.renderer.setProgressBarOff()
 		}
 
-		// Exit alternate screen buffer
 		if (this.inAltScreen) {
 			output += this.renderer.exitAltScreen()
 			this.inAltScreen = false
 		}
 
-		process.stdout.write(output)
+		return output
+	}
 
+	private finishSuspend(): void {
 		// Pause tty (handles raw mode)
 		this.tty.pause()
 
@@ -822,6 +819,49 @@ export class Tui {
 		if (process.stdout.isTTY) {
 			process.stdout.uncork()
 		}
+	}
+
+	private async writeStdout(output: string): Promise<void> {
+		if (output.length === 0) {
+			return
+		}
+
+		await new Promise<void>((resolve, reject) => {
+			process.stdout.write(output, (error?: Error | null) => {
+				if (error) {
+					reject(error)
+					return
+				}
+
+				resolve()
+			})
+		})
+	}
+
+	/** Suspend TUI - exit alt screen and reset all terminal state */
+	suspend(): void {
+		if (!this.initialized || this.suspended) {
+			return
+		}
+
+		process.stdout.write(this.buildSuspendOutput())
+		this.finishSuspend()
+	}
+
+	/** Suspend TUI before spawning an interactive child process */
+	async suspendForSubprocess(): Promise<void> {
+		if (!this.initialized || this.suspended) {
+			return
+		}
+
+		await this.writeStdout(this.buildSuspendOutput())
+
+		// Keep reading briefly so terminal-generated trailing bytes from the
+		// triggering key chord do not leak into the child process.
+		await new Promise((resolve) => setTimeout(resolve, SUBPROCESS_INPUT_SETTLE_MS))
+
+		this.parser?.reset()
+		this.finishSuspend()
 	}
 
 	/** Resume TUI - re-enter alt screen and restore all terminal state */
