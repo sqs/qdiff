@@ -18,9 +18,9 @@ class MockGitAdapter implements GitAdapter {
     async getStatus() { return this.statusResult; }
     async getBranchName() { return this.branchName; }
     async getLastCommit() { return this.lastCommit; }
-    async getRawDiff(path: string, staged: boolean, isUntracked?: boolean) {
-        const stagedKey = `${staged ? "staged" : "unstaged"}:${path}`;
-        return this.rawDiffs.get(stagedKey) || this.rawDiffs.get(path) || "";
+    async getRawDiff(entry: FileEntry, isUntracked?: boolean) {
+        const stagedKey = `${entry.staged ? "staged" : "unstaged"}:${entry.path}`;
+        return this.rawDiffs.get(stagedKey) || this.rawDiffs.get(entry.path) || "";
     }
 }
 

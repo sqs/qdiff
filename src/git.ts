@@ -4,28 +4,57 @@ import chalk from 'chalk';
 
 export interface FileEntry {
     path: string;
+    displayPath?: string;
+    originalPath?: string;
     status: string;
     staged: boolean;
     key: string;
 }
 
 export async function getStatus(): Promise<{ staged: FileEntry[], unstaged: FileEntry[], untracked: FileEntry[] }> {
-    const { stdout } = await execa('git', ['status', '--porcelain', '-u']);
-    const lines = stdout.split('\n').filter(Boolean);
+    const { stdout } = await execa('git', ['status', '--porcelain=v1', '-z', '-u']);
+    return parseStatus(stdout);
+}
+
+export function parseStatus(stdout: string): { staged: FileEntry[], unstaged: FileEntry[], untracked: FileEntry[] } {
     const staged: FileEntry[] = [];
     const unstaged: FileEntry[] = [];
     const untracked: FileEntry[] = [];
 
-    for (const line of lines) {
-        const x = line[0];
-        const y = line[1];
-        const path = line.slice(3);
+    const records = stdout.split('\0');
+    for (let i = 0; i < records.length; i++) {
+        const record = records[i];
+        if (!record) continue;
+
+        const x = record[0];
+        const y = record[1];
+        const path = record.slice(3);
+        const renameSourcePath = x === 'R' || x === 'C' || y === 'R' || y === 'C'
+            ? records[++i] || undefined
+            : undefined;
+
+        const stagedOriginalPath = x === 'R' || x === 'C' ? renameSourcePath : undefined;
+        const unstagedOriginalPath = y === 'R' || y === 'C' ? renameSourcePath : undefined;
 
         if (x !== ' ' && x !== '?') {
-            staged.push({ path, status: x, staged: true, key: `staged:${path}` });
+            staged.push({
+                path,
+                displayPath: stagedOriginalPath ? `${stagedOriginalPath} -> ${path}` : undefined,
+                originalPath: stagedOriginalPath,
+                status: x,
+                staged: true,
+                key: `staged:${path}`
+            });
         }
         if (y !== ' ' && y !== '?') {
-            unstaged.push({ path, status: y, staged: false, key: `unstaged:${path}` });
+            unstaged.push({
+                path,
+                displayPath: unstagedOriginalPath ? `${unstagedOriginalPath} -> ${path}` : undefined,
+                originalPath: unstagedOriginalPath,
+                status: y,
+                staged: false,
+                key: `unstaged:${path}`
+            });
         }
         if (x === '?' && y === '?') {
              untracked.push({ path, status: '?', staged: false, key: `untracked:${path}` });
@@ -59,11 +88,11 @@ export async function getDiff(path: string, staged: boolean): Promise<string> {
 }
 }
 
-export async function getRawDiff(path: string, staged: boolean, isUntracked: boolean = false): Promise<string> {
+export async function getRawDiff(entry: FileEntry, isUntracked: boolean = false): Promise<string> {
     if (isUntracked) {
         try {
              // Use --no-index to compare /dev/null with the new file to generate a creation diff
-             const { stdout } = await execa('git', ['diff', '--no-index', '--', '/dev/null', path]);
+             const { stdout } = await execa('git', ['diff', '--no-index', '--', '/dev/null', entry.path]);
              return stdout;
         } catch (e: any) {
              // git diff --no-index returns exit code 1 if there are differences, which is expected
@@ -74,10 +103,16 @@ export async function getRawDiff(path: string, staged: boolean, isUntracked: boo
     }
 
     const args = ['diff', '--no-color']; // Ensure no color codes for parsing
-    if (staged) {
+    if (entry.staged) {
         args.push('--cached');
     }
-    args.push('--', path);
+
+    if (entry.originalPath && (entry.status === 'R' || entry.status === 'C')) {
+        args.push('-M', '--', entry.originalPath, entry.path);
+    } else {
+        args.push('--', entry.path);
+    }
+
     try {
         const { stdout } = await execa('git', args);
         return stdout;

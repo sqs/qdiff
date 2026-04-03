@@ -14,7 +14,7 @@ export interface GitAdapter {
     getBranchName(): Promise<string>;
     getLastCommit(): Promise<CommitInfo | null>;
     getRecentCommits(limit: number): Promise<CommitInfo[]>;
-    getRawDiff(path: string, staged: boolean, isUntracked?: boolean): Promise<string>;
+    getRawDiff(entry: FileEntry, isUntracked?: boolean): Promise<string>;
     stageFile(path: string): Promise<void>;
     unstageFile(path: string): Promise<void>;
     discardFile(path: string, isUntracked?: boolean): Promise<void>;
@@ -234,7 +234,7 @@ export class GitStatusViewModel {
 
             const promises = allEntries.map(async entry => {
                     try {
-                        const rawDiff = await this.git.getRawDiff(entry.path, entry.staged, entry.status === '?');
+                        const rawDiff = await this.git.getRawDiff(entry, entry.status === '?');
                         const parsed = parseDiff(rawDiff);
                         return { key: entry.key, diff: parsed, loadFailed: false, entry };
                     } catch (e) {
@@ -558,7 +558,7 @@ export class GitStatusViewModel {
                 let diffToKill = '';
                 if (data.fullFile) {
                      // Get full diff for file
-                     diffToKill = await this.git.getRawDiff(data.entry.path, false, data.entry.status === '?');
+                     diffToKill = await this.git.getRawDiff(data.entry, data.entry.status === '?');
                 } else {
                     const diff = this.diffCache.get(key);
                     if (diff) {
@@ -721,7 +721,7 @@ export class GitStatusViewModel {
         } else {
             if (!this.diffCache.has(entry.key)) {
                 try {
-                    const rawDiff = await this.git.getRawDiff(entry.path, entry.staged, entry.status === '?');
+                    const rawDiff = await this.git.getRawDiff(entry, entry.status === '?');
                     const parsed = parseDiff(rawDiff);
                     this.diffCache.set(entry.key, parsed);
                 } catch (e) {

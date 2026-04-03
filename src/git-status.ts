@@ -407,6 +407,7 @@ class GitStatusState extends State<GitStatusWidget> {
             });
         } else if (item.type === 'file') {
              const entry = item.entry!;
+             const displayPath = entry.displayPath ?? entry.path;
              const diffStat = this.vm.diffStats.get(entry.key) || { added: 0, modified: 0, removed: 0 };
              const diffStatText = this.formatDiffStatText(diffStat);
              const diffStatPadding = ' '.repeat(Math.max(0, this.vm.diffStatWidth - diffStatText.length));
@@ -432,7 +433,7 @@ class GitStatusState extends State<GitStatusWidget> {
                      color: isSelected ? Colors.black : Colors.red,
                      backgroundColor: isSelected ? Colors.white : undefined
                  })),
-                 new TextSpan(`${diffStatPadding} ${entry.path}`, new TextStyle({
+                 new TextSpan(`${diffStatPadding} ${displayPath}`, new TextStyle({
                      color: textColor,
                      backgroundColor: isSelected ? Colors.white : undefined
                  }))
