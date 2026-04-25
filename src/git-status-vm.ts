@@ -129,6 +129,24 @@ export class GitStatusViewModel {
             const diff = this.diffCache.get(entry.key);
             if (!diff) {
                 items.push({ id: `${entry.key}-loading`, type: 'message', text: 'Loading diff...', selectable: false });
+            } else if (diff.hunks.length === 0) {
+                // Header-only diff (e.g. pure rename, copy, or mode change).
+                // Render the meaningful header lines so expansion shows something.
+                const metadataLines = diff.headerLines.filter(line =>
+                    line &&
+                    !line.startsWith('diff --git ') &&
+                    !line.startsWith('index ') &&
+                    !line.startsWith('--- ') &&
+                    !line.startsWith('+++ ')
+                );
+                metadataLines.forEach((line, i) => {
+                    items.push({
+                        id: `${entry.key}-meta-${i}`,
+                        type: 'message',
+                        text: `    ${line}`,
+                        selectable: false,
+                    });
+                });
             } else {
                 diff.hunks.forEach((hunk, hIndex) => {
                     items.push({ 
