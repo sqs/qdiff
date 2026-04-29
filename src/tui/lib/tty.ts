@@ -49,6 +49,8 @@ export type Tty = {
  * Create a TTY implementation that opens /dev/tty
  */
 function createDevTty(): Tty {
+	let ownsStdin = false
+
 	const ttyInstance: Tty = {
 		stdin: null,
 		dataCallback: null,
@@ -57,11 +59,26 @@ function createDevTty(): Tty {
 			if (this.stdin !== null) {
 				return
 			}
-			const fd = openSync('/dev/tty', 'r')
-			if (!tty.isatty(fd)) {
-				throw new Error('/dev/tty is not a TTY device')
+
+			let stream: tty.ReadStream
+			try {
+				const fd = openSync('/dev/tty', 'r')
+				if (!tty.isatty(fd)) {
+					throw new Error('/dev/tty is not a TTY device')
+				}
+				stream = new tty.ReadStream(fd)
+				ownsStdin = true
+			} catch (error) {
+				if (isTTYReadStream(process.stdin)) {
+					stream = process.stdin
+					ownsStdin = false
+				} else {
+					throw new Error('No interactive terminal input is available', {
+						cause: error,
+					})
+				}
 			}
-			const stream = new tty.ReadStream(fd)
+
 			this.stdin = stream
 
 			// Set raw mode
@@ -87,36 +104,44 @@ function createDevTty(): Tty {
 		},
 
 		pause(): void {
-			// Restore raw mode and destroy stream
+			// Restore raw mode and release stream
 			if (this.stdin) {
 				this.stdin.setRawMode(false)
 				if (this.dataCallback) {
 					this.stdin.removeListener('data', this.dataCallback)
 				}
-				this.stdin.destroy()
+				if (ownsStdin) {
+					this.stdin.destroy()
+				} else {
+					this.stdin.pause()
+				}
 			}
 			this.stdin = null
 		},
 
 		resume(): void {
 			this.init()
+			this.stdin?.resume()
 		},
 
 		dispose(): void {
-			// Restore raw mode and destroy stream
+			// Restore raw mode and release stream
 			if (this.stdin) {
 				this.stdin.setRawMode(false)
 				if (this.dataCallback) {
 					this.stdin.removeListener('data', this.dataCallback)
 				}
-				this.stdin.destroy()
+				if (ownsStdin) {
+					this.stdin.destroy()
+				} else {
+					this.stdin.pause()
+				}
 			}
 			this.stdin = null
 			this.dataCallback = null
 		},
 	}
 
-	ttyInstance.init()
 	return ttyInstance
 }
 
@@ -173,13 +198,18 @@ function createStdinTty(): Tty {
 		},
 
 		resume(): void {
+			const wasUninitialized = this.stdin === null
+			if (wasUninitialized) {
+				this.init()
+			}
+
 			// Set raw mode
 			if (this.stdin && this.stdin.isTTY) {
 				this.stdin.setRawMode(true)
 			}
 
 			// Re-add listener
-			if (this.stdin && this.dataCallback) {
+			if (!wasUninitialized && this.stdin && this.dataCallback) {
 				this.stdin.on('data', this.dataCallback)
 			}
 
@@ -200,7 +230,6 @@ function createStdinTty(): Tty {
 		},
 	}
 
-	ttyInstance.init()
 	return ttyInstance
 }
 
@@ -215,4 +244,12 @@ export function createTty(): Tty {
 	}
 
 	return createDevTty()
+}
+
+function isTTYReadStream(stream: NodeJS.ReadableStream): stream is tty.ReadStream {
+	return (
+		'isTTY' in stream &&
+		stream.isTTY === true &&
+		typeof (stream as Partial<tty.ReadStream>).setRawMode === 'function'
+	)
 }

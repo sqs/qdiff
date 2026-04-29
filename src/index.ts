@@ -6,7 +6,7 @@ async function main() {
         await runApp(new GitStatusWidget());
         process.exit(0);
     } catch (e) {
-        console.error('Error in main:', e);
+        console.error(e instanceof Error ? e.message : e);
         process.exit(1);
     }
 }

@@ -222,6 +222,9 @@ export class Tui {
 		if (this.initialized) {
 			throw new Error('TUI is already initialized')
 		}
+		if (!process.stdout.isTTY) {
+			throw new Error('qdiff requires an interactive terminal; stdout is not a TTY')
+		}
 
 		try {
 			// Create VT parser
