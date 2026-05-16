@@ -137,6 +137,14 @@ export function registerDefaultBindings() {
     });
 
     globalRegistry.register({
+        keys: ['Shift+Tab'],
+        label: 'Shift+Tab',
+        description: 'Toggle expand/collapse current section',
+        category: 'Navigation',
+        action: (vm) => vm.toggleExpandCurrentSection()
+    });
+
+    globalRegistry.register({
         keys: ['g'],
         label: 'g',
         description: 'Refresh',

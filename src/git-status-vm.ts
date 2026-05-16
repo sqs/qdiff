@@ -9,6 +9,8 @@ export interface DiffStat {
     removed: number;
 }
 
+export type ChangeSection = 'untracked' | 'unstaged' | 'staged';
+
 export interface GitAdapter {
     getStatus(): Promise<{ staged: FileEntry[], unstaged: FileEntry[], untracked: FileEntry[] }>;
     getBranchName(): Promise<string>;
@@ -27,6 +29,7 @@ export interface VisibleItem {
     id: string;
     type: 'header' | 'file' | 'hunk' | 'line' | 'message';
     text?: string;
+    section?: ChangeSection;
     entry?: FileEntry;
     hunkIndex?: number;
     lineIndex?: number;
@@ -99,17 +102,20 @@ export class GitStatusViewModel {
         const PADDED_MESSAGE_PREFIX='\n  '
 
         if (this.untracked.length > 0) {
-            items.push({ id: 'header-untracked', type: 'header', text: `Untracked Files (${this.untracked.length})`, selectable: true });
+            const diffStat = this.formatDiffStat(this.getSectionDiffStat('untracked'));
+            items.push({ id: 'header-untracked', type: 'header', section: 'untracked', text: `Untracked Files (${this.untracked.length}) ${diffStat}`, selectable: true });
             this.untracked.forEach(entry => this.addFileItems(items, entry));
         }
 
         if (this.unstaged.length > 0) {
-            items.push({ id: 'header-unstaged', type: 'header', text: `Unstaged Changes (${this.unstaged.length})`, selectable: true });
+            const diffStat = this.formatDiffStat(this.getSectionDiffStat('unstaged'));
+            items.push({ id: 'header-unstaged', type: 'header', section: 'unstaged', text: `Unstaged Changes (${this.unstaged.length}) ${diffStat}`, selectable: true });
             this.unstaged.forEach(entry => this.addFileItems(items, entry));
         }
 
         if (this.staged.length > 0) {
-            items.push({ id: 'header-staged', type: 'header', text: `Staged Changes (${this.staged.length})`, selectable: true });
+            const diffStat = this.formatDiffStat(this.getSectionDiffStat('staged'));
+            items.push({ id: 'header-staged', type: 'header', section: 'staged', text: `Staged Changes (${this.staged.length}) ${diffStat}`, selectable: true });
             this.staged.forEach(entry => this.addFileItems(items, entry));
         }
 
@@ -194,8 +200,53 @@ export class GitStatusViewModel {
         };
     }
 
-    private formatDiffStat(diffStat: DiffStat): string {
+    public formatDiffStat(diffStat: DiffStat): string {
         return `+${diffStat.added}/~${diffStat.modified}/-${diffStat.removed}`;
+    }
+
+    private addDiffStats(a: DiffStat, b: DiffStat): DiffStat {
+        return {
+            added: a.added + b.added,
+            modified: a.modified + b.modified,
+            removed: a.removed + b.removed,
+        };
+    }
+
+    private getSectionEntries(section: ChangeSection): FileEntry[] {
+        if (section === 'untracked') return this.untracked;
+        if (section === 'unstaged') return this.unstaged;
+        return this.staged;
+    }
+
+    public getSectionDiffStat(section: ChangeSection): DiffStat {
+        let total = { added: 0, modified: 0, removed: 0 };
+        for (const entry of this.getSectionEntries(section)) {
+            const diffStat = this.diffStats.get(entry.key);
+            if (diffStat) {
+                total = this.addDiffStats(total, diffStat);
+            }
+        }
+        return total;
+    }
+
+    public getOverallDiffStat(): DiffStat {
+        return this.addDiffStats(
+            this.addDiffStats(this.getSectionDiffStat('untracked'), this.getSectionDiffStat('unstaged')),
+            this.getSectionDiffStat('staged')
+        );
+    }
+
+    private getItemSection(item: VisibleItem | undefined): ChangeSection | null {
+        if (!item) return null;
+        if (item.section) return item.section;
+        if (item.id === 'header-untracked') return 'untracked';
+        if (item.id === 'header-unstaged') return 'unstaged';
+        if (item.id === 'header-staged') return 'staged';
+        if (!item.entry) return null;
+        if (item.entry.key.startsWith('untracked:')) return 'untracked';
+        if (item.entry.key.startsWith('unstaged:')) return 'unstaged';
+        if (item.entry.key.startsWith('staged:')) return 'staged';
+        return null;
     }
 
     async refresh() {
@@ -750,6 +801,42 @@ export class GitStatusViewModel {
             this.updateItems();
             this.notify();
         }
+    }
+
+    async toggleExpandCurrentSection() {
+        const section = this.getItemSection(this.items[this.selectedIndex]);
+        if (!section) return;
+
+        const entries = this.getSectionEntries(section);
+        if (entries.length === 0) return;
+
+        const shouldExpand = entries.some(entry => !this.expandedFiles.has(entry.key));
+
+        if (!shouldExpand) {
+            for (const entry of entries) {
+                this.expandedFiles.delete(entry.key);
+            }
+            this.updateItems();
+            this.notify();
+            return;
+        }
+
+        await Promise.all(entries.map(async entry => {
+            if (this.diffCache.has(entry.key)) return;
+            try {
+                const rawDiff = await this.git.getRawDiff(entry, entry.status === '?');
+                const parsed = parseDiff(rawDiff);
+                this.diffCache.set(entry.key, parsed);
+            } catch (e) {
+                // Ignore
+            }
+        }));
+
+        for (const entry of entries) {
+            this.expandedFiles.add(entry.key);
+        }
+        this.updateItems();
+        this.notify();
     }
     
     formatLastCommit(): string {

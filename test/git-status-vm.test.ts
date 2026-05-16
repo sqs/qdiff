@@ -259,6 +259,78 @@ index 1..2 100644
         expect(vm.items.length).toBeGreaterThan(2);
     });
 
+    it("toggles expansion for all files in the selected section", async () => {
+        const file1 = { path: "file1.ts", status: "M", staged: false, key: "unstaged:file1.ts" };
+        const file2 = { path: "file2.ts", status: "M", staged: false, key: "unstaged:file2.ts" };
+        const stagedFile = { path: "file3.ts", status: "M", staged: true, key: "staged:file3.ts" };
+        git.statusResult = { staged: [stagedFile], unstaged: [file1, file2], untracked: [] };
+
+        const diff = (path: string) => `diff --git a/${path} b/${path}
+index 1..2 100644
+--- a/${path}
++++ b/${path}
+@@ -1,1 +1,1 @@
+-old
++new
+`;
+        git.rawDiffs.set("unstaged:file1.ts", diff("file1.ts"));
+        git.rawDiffs.set("unstaged:file2.ts", diff("file2.ts"));
+        git.rawDiffs.set("staged:file3.ts", diff("file3.ts"));
+
+        await vm.refresh();
+
+        vm.selectedIndex = vm.items.findIndex(item => item.id === "header-unstaged");
+        await vm.toggleExpandCurrentSection();
+
+        expect(vm.expandedFiles.has("unstaged:file1.ts")).toBe(true);
+        expect(vm.expandedFiles.has("unstaged:file2.ts")).toBe(true);
+        expect(vm.expandedFiles.has("staged:file3.ts")).toBe(false);
+
+        await vm.toggleExpandCurrentSection();
+
+        expect(vm.expandedFiles.has("unstaged:file1.ts")).toBe(false);
+        expect(vm.expandedFiles.has("unstaged:file2.ts")).toBe(false);
+    });
+
+    it("shows section and overall diffstats", async () => {
+        git.statusResult = {
+            staged: [{ path: "file1.ts", status: "M", staged: true, key: "staged:file1.ts" }],
+            unstaged: [{ path: "file2.ts", status: "M", staged: false, key: "unstaged:file2.ts" }],
+            untracked: [{ path: "file3.ts", status: "?", staged: false, key: "untracked:file3.ts" }]
+        };
+
+        git.rawDiffs.set("staged:file1.ts", `diff --git a/file1.ts b/file1.ts
+index 1..2 100644
+--- a/file1.ts
++++ b/file1.ts
+@@ -1,1 +1,2 @@
+-old
++new
++added
+`);
+        git.rawDiffs.set("unstaged:file2.ts", `diff --git a/file2.ts b/file2.ts
+index 1..2 100644
+--- a/file2.ts
++++ b/file2.ts
+@@ -1,1 +1,0 @@
+-removed
+`);
+        git.rawDiffs.set("file3.ts", `diff --git a/dev/null b/file3.ts
+new file mode 100644
+--- /dev/null
++++ b/file3.ts
+@@ -0,0 +1,1 @@
++new
+`);
+
+        await vm.refresh();
+
+        expect(vm.items.find(item => item.id === "header-untracked")?.text).toBe("Untracked Files (1) +1/~0/-0");
+        expect(vm.items.find(item => item.id === "header-unstaged")?.text).toBe("Unstaged Changes (1) +0/~0/-1");
+        expect(vm.items.find(item => item.id === "header-staged")?.text).toBe("Staged Changes (1) +1/~1/-0");
+        expect(vm.formatDiffStat(vm.getOverallDiffStat())).toBe("+2/~1/-1");
+    });
+
     it("refresh updates cached unstaged diff when file exists in staged and unstaged", async () => {
         const stagedEntry = { path: "file1.ts", status: "M", staged: true, key: "staged:file1.ts" };
         const unstagedEntry = { path: "file1.ts", status: "M", staged: false, key: "unstaged:file1.ts" };

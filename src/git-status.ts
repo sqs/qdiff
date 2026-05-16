@@ -90,6 +90,29 @@ class GitStatusState extends State<GitStatusWidget> {
         return `+${diffStat.added}/~${diffStat.modified}/-${diffStat.removed}`;
     }
 
+    private buildDiffStatSpans(
+        diffStat: { added: number; modified: number; removed: number },
+        textColor: any,
+        backgroundColor?: any
+    ): TextSpan[] {
+        return [
+            new TextSpan(`+${diffStat.added}`, new TextStyle({
+                color: backgroundColor ? textColor : Colors.green,
+                backgroundColor
+            })),
+            new TextSpan('/', new TextStyle({ color: textColor, backgroundColor })),
+            new TextSpan(`~${diffStat.modified}`, new TextStyle({
+                color: backgroundColor ? textColor : Colors.yellow,
+                backgroundColor
+            })),
+            new TextSpan('/', new TextStyle({ color: textColor, backgroundColor })),
+            new TextSpan(`-${diffStat.removed}`, new TextStyle({
+                color: backgroundColor ? textColor : Colors.red,
+                backgroundColor
+            })),
+        ];
+    }
+
     initState() {
         registerDefaultBindings();
         this.scrollController.followMode = false;
@@ -204,7 +227,9 @@ class GitStatusState extends State<GitStatusWidget> {
             const children: TextSpan[] = [];
             
             // Branch
-            children.push(new TextSpan(` ${this.vm.branchName}  \u00B7  `, new TextStyle({ color: Colors.rgb(220, 220, 220) })));
+            children.push(new TextSpan(` ${this.vm.branchName} `, new TextStyle({ color: Colors.rgb(220, 220, 220) })));
+            children.push(...this.buildDiffStatSpans(this.vm.getOverallDiffStat(), Colors.rgb(220, 220, 220)));
+            children.push(new TextSpan('  \u00B7  ', new TextStyle({ color: Colors.rgb(220, 220, 220) })));
             
             if (this.vm.lastCommit) {
                  const { sha, message, committer } = this.vm.lastCommit;
@@ -391,6 +416,25 @@ class GitStatusState extends State<GitStatusWidget> {
         }
 
         if (item.type === 'header') {
+            if (item.section) {
+                const textColor = isSelected ? Colors.black : Colors.white;
+                const backgroundColor = isSelected ? Colors.white : undefined;
+                const label = item.section === 'untracked'
+                    ? `Untracked Files (${this.vm.untracked.length}) `
+                    : item.section === 'unstaged'
+                        ? `Unstaged Changes (${this.vm.unstaged.length}) `
+                        : `Staged Changes (${this.vm.staged.length}) `;
+                content = new RichText({
+                    text: new TextSpan(undefined, undefined, [
+                        new TextSpan(label, new TextStyle({
+                            color: textColor,
+                            bold: true,
+                            backgroundColor
+                        })),
+                        ...this.buildDiffStatSpans(this.vm.getSectionDiffStat(item.section), textColor, backgroundColor),
+                    ])
+                });
+            } else {
             content = new RichText({
                 text: new TextSpan(
                     item.text || '',
@@ -401,6 +445,7 @@ class GitStatusState extends State<GitStatusWidget> {
                     })
                 )
             });
+            }
         } else if (item.type === 'message') {
              content = new RichText({
                 text: new TextSpan(item.text || '', new TextStyle({ color: Colors.white }))
@@ -419,20 +464,7 @@ class GitStatusState extends State<GitStatusWidget> {
                      backgroundColor: isSelected ? Colors.white : undefined
                  })),
                  new TextSpan(' ', new TextStyle({ color: textColor, backgroundColor: isSelected ? Colors.white : undefined })),
-                 new TextSpan(`+${diffStat.added}`, new TextStyle({
-                     color: isSelected ? Colors.black : Colors.green,
-                     backgroundColor: isSelected ? Colors.white : undefined
-                 })),
-                 new TextSpan('/', new TextStyle({ color: textColor, backgroundColor: isSelected ? Colors.white : undefined })),
-                 new TextSpan(`~${diffStat.modified}`, new TextStyle({
-                     color: isSelected ? Colors.black : Colors.yellow,
-                     backgroundColor: isSelected ? Colors.white : undefined
-                 })),
-                 new TextSpan('/', new TextStyle({ color: textColor, backgroundColor: isSelected ? Colors.white : undefined })),
-                 new TextSpan(`-${diffStat.removed}`, new TextStyle({
-                     color: isSelected ? Colors.black : Colors.red,
-                     backgroundColor: isSelected ? Colors.white : undefined
-                 })),
+                 ...this.buildDiffStatSpans(diffStat, textColor, isSelected ? Colors.white : undefined),
                  new TextSpan(`${diffStatPadding} ${displayPath}`, new TextStyle({
                      color: textColor,
                      backgroundColor: isSelected ? Colors.white : undefined
@@ -616,6 +648,10 @@ class GitStatusState extends State<GitStatusWidget> {
     }
 
     private getBindingKey(event: KeyboardEvent): string {
+        if (event.key === 'Tab' && event.shiftKey) {
+            return 'Shift+Tab';
+        }
+
         if (event.metaKey) {
             if (event.key === '<' || (event.key === ',' && event.shiftKey)) {
                 return 'Cmd+Shift+<';
