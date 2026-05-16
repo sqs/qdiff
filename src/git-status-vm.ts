@@ -100,6 +100,11 @@ export class GitStatusViewModel {
         const items: VisibleItem[] = [];
 
         const PADDED_MESSAGE_PREFIX='\n  '
+        const addSectionSpacer = () => {
+            if (items.length > 0) {
+                items.push({ id: `section-spacer-${items.length}`, type: 'message', text: '', selectable: false });
+            }
+        };
 
         if (this.untracked.length > 0) {
             const diffStat = this.formatDiffStat(this.getSectionDiffStat('untracked'));
@@ -108,12 +113,14 @@ export class GitStatusViewModel {
         }
 
         if (this.unstaged.length > 0) {
+            addSectionSpacer();
             const diffStat = this.formatDiffStat(this.getSectionDiffStat('unstaged'));
             items.push({ id: 'header-unstaged', type: 'header', section: 'unstaged', text: `Unstaged Changes (${this.unstaged.length}) ${diffStat}`, selectable: true });
             this.unstaged.forEach(entry => this.addFileItems(items, entry));
         }
 
         if (this.staged.length > 0) {
+            addSectionSpacer();
             const diffStat = this.formatDiffStat(this.getSectionDiffStat('staged'));
             items.push({ id: 'header-staged', type: 'header', section: 'staged', text: `Staged Changes (${this.staged.length}) ${diffStat}`, selectable: true });
             this.staged.forEach(entry => this.addFileItems(items, entry));

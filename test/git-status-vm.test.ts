@@ -47,13 +47,8 @@ describe("GitStatusViewModel", () => {
         await vm.refresh();
 
         expect(vm.items.length).toBeGreaterThan(0);
-        // Order: Unstaged Header -> File2 -> Staged Header -> File1
-        // Index 0: Unstaged header
-        // Index 1: File2 (unstaged)
-        // Index 2: Staged header
-        // Index 3: File1 (staged)
-        expect(vm.items[3].entry?.path).toBe("file1.ts");
-        expect(vm.items[1].entry?.path).toBe("file2.ts");
+        expect(vm.items.find(item => item.id === "staged:file1.ts")?.entry?.path).toBe("file1.ts");
+        expect(vm.items.find(item => item.id === "unstaged:file2.ts")?.entry?.path).toBe("file2.ts");
     });
 
     it("navigates selection including headers", async () => {
@@ -64,7 +59,9 @@ describe("GitStatusViewModel", () => {
         };
         await vm.refresh();
 
-        // Order: Unstaged Hdr (0), File2 (1), Staged Hdr (2), File1 (3)
+        // Order: Unstaged Hdr (0), File2 (1), spacer (2), Staged Hdr (3), File1 (4)
+        expect(vm.items[2].id).toBe("section-spacer-2");
+        expect(vm.items[2].selectable).toBe(false);
         
         // First selectable is Unstaged Header at index 0
         expect(vm.selectedIndex).toBe(0); 
@@ -77,17 +74,17 @@ describe("GitStatusViewModel", () => {
 
         // Move down -> Staged Header
         vm.moveSelection(1);
-        expect(vm.selectedIndex).toBe(2);
+        expect(vm.selectedIndex).toBe(3);
         expect(vm.items[vm.selectedIndex].id).toBe("header-staged");
 
         // Move down -> File1
         vm.moveSelection(1);
-        expect(vm.selectedIndex).toBe(3);
+        expect(vm.selectedIndex).toBe(4);
         expect(vm.items[vm.selectedIndex].id).toBe("staged:file1.ts");
 
         // Move up -> Staged Header
         vm.moveSelection(-1);
-        expect(vm.selectedIndex).toBe(2);
+        expect(vm.selectedIndex).toBe(3);
     });
 
     it("moves selection by page-sized deltas", async () => {
@@ -104,12 +101,12 @@ describe("GitStatusViewModel", () => {
         };
         await vm.refresh();
 
-        // Order: Unstaged Hdr(0), File1(1), File2(2), Staged Hdr(3), File3(4), File4(5)
+        // Order: Unstaged Hdr(0), File1(1), File2(2), spacer(3), Staged Hdr(4), File3(5), File4(6)
         vm.moveSelectionBy(2);
         expect(vm.selectedIndex).toBe(2);
 
         vm.moveSelectionBy(100);
-        expect(vm.selectedIndex).toBe(5);
+        expect(vm.items[vm.selectedIndex].id).toBe("staged:file4.ts");
 
         vm.moveSelectionBy(-3);
         expect(vm.selectedIndex).toBe(2);
@@ -145,9 +142,8 @@ describe("GitStatusViewModel", () => {
         };
         await vm.refresh();
 
-        // Select file1 (staged) at index 3
-        // 0: Unstaged Hdr, 1: File2, 2: Staged Hdr, 3: File1
-        vm.selectedIndex = 3;
+        // Select file1 (staged)
+        vm.selectedIndex = vm.items.findIndex(item => item.id === "staged:file1.ts");
         expect(vm.items[vm.selectedIndex].id).toBe("staged:file1.ts");
 
         // Refresh again with same data
